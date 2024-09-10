@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "<3.12,>3.11"
-pypsdm = "^0.0.3"
+pypsdm = {git = "https://github.com/ie3-institute/pypsdm.git"}
 pandapower = "^2.14.11"
 simbench = "^1.5.3"
 
