@@ -49,9 +49,18 @@ def convert_nodes(grid):
     nodes_data = {}
 
     df = grid.bus
-
+    
+    list_node_id = []
+    nodes_geo_position_list = []
+    list_subnets = []
+    v_rated_list = []
+    v_target_list = []
+    volt_lvl_list = []
+    operates_from_list = []
+    operates_until_list = []
+    slack_list = []
+    
     for idx, row in df.iterrows():
-        # TODO SLACK?
 
         # Get operation times
         operates_from, operates_until = get_operation_times(row)
@@ -63,37 +72,39 @@ def convert_nodes(grid):
             volt_lvl = row["vn_kv"]
 
         # Determine the subnet (subnet, zone, or fixed number)
-        if "subnet" in df.columns and not pd.isna(row["subnet"]):
-            subnet = row["subnet"]
-        elif "zone" in df.columns and not pd.isna(row["zone"]):
+        if "zone" in df.columns and not pd.isna(row["zone"]):
             subnet = row["zone"]
         else:
             subnet = 101
 
-        node_data = create_nodes_data(
-            uuid=row["uuid"],
-            geo_position=None,
-            id=row["name"],
-            subnet=subnet,
-            v_rated=row["vn_kv"],
-            v_target=row["vn_kv"],
-            volt_lvl=volt_lvl,
-            operates_from=operates_from,
-            operates_until=operates_until,
-            operator=None,
-            slack=False
-        )
-        nodes_data[node_data.name] = node_data
+        # In case there is a uuid column use it else generate uuids
+        if "uuid" in df.columns and not pd.isna(row["uuid"]):
+            uuid = row["uuid"]
+        else:
+            uuid = uuid4().__str__()
 
-        if row["uuid"] == '1f6e5dd7-9bd7-4bb5-9ff9-56000a6cd14b':
-            print(node_data)
-
-
-      #  if row["uuid"] == '798443cf-7d59-4e95-aaf5-955f65531bac':
-      #      print(node_data)
-
-
-    return create_nodes(nodes_data)
+        list_node_id = list_node_id + [row["name"]]
+        nodes_geo_position_list = nodes_geo_position_list + [None]
+        list_subnets = list_subnets + [subnet]
+        v_rated_list = v_rated_list + [row["vn_kv"]]
+        v_target_list = v_target_list + [row["vn_kv"]]
+        volt_lvl_list = volt_lvl_list+[volt_lvl]
+        operates_from_list = operates_from_list + [operates_from]
+        operates_until_list = operates_until_list + [operates_until]
+        slack_list=slack_list + ['false']
+        
+    
+    data_dict = {
+        "id": list_node_id,
+        "geo_position": nodes_geo_position_list,
+        "subnet": list_subnets,
+        "v_rated": v_rated_list,
+        "v_target": v_target_list,
+        "volt_lvl": volt_lvl_list,
+        "slack": slack_list,
+    }
+    
+    return create_nodes(data_dict)
 
 
 def get_operation_times(row):
