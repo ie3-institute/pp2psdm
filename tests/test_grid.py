@@ -1,15 +1,21 @@
 import math
 
+import numpy as np
 import pandapower as pp
 import pytest
-import numpy as np
-from pp2psdm.grid import convert_grid, convert_line_types, convert_lines, convert_nodes#, convert_transformers
+
+from pp2psdm.grid import (  # , convert_transformers
+    convert_grid,
+    convert_line_types,
+    convert_lines,
+    convert_nodes,
+)
 from tests.utils import read_psdm_lv, read_sb_lv
 
 
 @pytest.fixture
 def input_data():
-    expected = read_psdm_lv() 
+    expected = read_psdm_lv()
     input = read_sb_lv()
     return expected, input
 
@@ -36,14 +42,17 @@ def test_nodes_conversion(input_data):
     _, input = input_data
     len = input.bus.shape[0]
     net, _ = convert_nodes(input)
-    for i in range(len):   
-        assert net.data.iloc[i]['id'] == input.bus.iloc[i]["name"]
+    for i in range(len):
+        assert net.data.iloc[i]["id"] == input.bus.iloc[i]["name"]
         assert net.data.iloc[i]["v_rated"] == input.bus.iloc[i]["vn_kv"]
         assert net.data.iloc[i]["subnet"] == 101
         assert net.data.iloc[i]["operates_from"] == None
         assert net.data.iloc[i]["operates_until"] == None
         assert net.data.iloc[i]["operator"] == None
-        assert net.data.iloc[i]["geo_position"] == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
+        assert (
+            net.data.iloc[i]["geo_position"]
+            == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
+        )
 
 
 def test_line_types_conversion(input_data):
@@ -53,28 +62,45 @@ def test_line_types_conversion(input_data):
     net, _ = convert_line_types(input, nodes, index_uuid_map)
 
     for i in range(len):
-        assert net.iloc[i]["v_rated"] == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["from_bus"]))['v_target']
-        assert net.iloc[i]["v_rated"] == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["to_bus"]))['v_target']
+        assert (
+            net.iloc[i]["v_rated"]
+            == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["from_bus"]))[
+                "v_target"
+            ]
+        )
+        assert (
+            net.iloc[i]["v_rated"]
+            == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["to_bus"]))[
+                "v_target"
+            ]
+        )
         assert math.isclose(net.iloc[i]["r"], input.line.iloc[i]["r_ohm_per_km"])
         assert math.isclose(net.iloc[i]["x"], input.line.iloc[i]["x_ohm_per_km"])
-        assert math.isclose(net.iloc[i]["b"], input.line.iloc[i]["c_nf_per_km"] * 2 * np.pi * 50 * 1e-3)
+        assert math.isclose(
+            net.iloc[i]["b"], input.line.iloc[i]["c_nf_per_km"] * 2 * np.pi * 50 * 1e-3
+        )
         assert math.isclose(net.iloc[i]["g"], input.line.iloc[i]["g_us_per_km"])
         assert math.isclose(net.iloc[i]["i_max"], input.line.iloc[i]["max_i_ka"] * 1000)
-
 
 
 def test_lines_conversion(input_data):
     expected, input = input_data
     len = input.line.shape[0]
     nodes, node_index_uuid_map = convert_nodes(input)
-    line_types, line_index_line_type_uuid_map = convert_line_types(input, nodes, node_index_uuid_map)
+    line_types, line_index_line_type_uuid_map = convert_line_types(
+        input, nodes, node_index_uuid_map
+    )
 
     net = convert_lines(input, line_index_line_type_uuid_map, node_index_uuid_map)
 
     for i in range(len):
-        assert net.data.iloc[i]['id'] == input.line.iloc[i]["name"]
-        assert net.data.iloc[i]["node_a"] == node_index_uuid_map.get(input.line.iloc[i]["from_bus"])
-        assert net.data.iloc[i]["node_b"] == node_index_uuid_map.get(input.line.iloc[i]["to_bus"])
+        assert net.data.iloc[i]["id"] == input.line.iloc[i]["name"]
+        assert net.data.iloc[i]["node_a"] == node_index_uuid_map.get(
+            input.line.iloc[i]["from_bus"]
+        )
+        assert net.data.iloc[i]["node_b"] == node_index_uuid_map.get(
+            input.line.iloc[i]["to_bus"]
+        )
         assert net.data.iloc[i]["length"] == input.line.iloc[i]["length_km"]
         assert net.data.iloc[i]["olm_characteristic"] == "olm:{(0.0,1.0)}"
         assert net.data.iloc[i]["operates_from"] == None

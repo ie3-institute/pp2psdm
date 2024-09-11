@@ -8,8 +8,10 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 from pypsdm.models.input.container.raw_grid import RawGridContainer
-from pypsdm.models.input.create.participants import create_data
-from pypsdm.models.input.create.grid_elements import create_nodes, create_nodes_data, create_lines, create_lines_data
+from pypsdm.models.input.create.grid_elements import (
+    create_lines,
+    create_nodes,
+)
 
 
 @dataclass
@@ -25,13 +27,11 @@ def convert_grid(
 
     uuid_idx = UuidIdxMaps()
 
-    net = RawGridContainer.empty(
-    )
+    net = RawGridContainer.empty()
 
     nodes = convert_nodes(grid.bus)
 
     convert_lines(grid)
-
 
     for uuid, line in grid.line.data.iterrows():
         idx = convert_line(net, line, uuid_idx.node)
@@ -45,13 +45,14 @@ def convert_grid(
 
     return net, uuid_idx
 
+
 def get_default(value, default):
     return value if not pd.isna(value) else default
+
 
 def convert_nodes(grid):
     df = grid.bus
     geodata = grid.bus_geodata
-
 
     def format_geo_position(row):
         if not pd.isna(row["x"]) and not pd.isna(row["y"]):
@@ -64,28 +65,17 @@ def convert_nodes(grid):
         "id": df["name"].tolist(),
         "uuid": [node_index_uuid_map[idx] for idx in df.index],
         "geo_position": [
-            format_geo_position(geodata.iloc[idx])
-            for idx in range(len(df))
+            format_geo_position(geodata.iloc[idx]) for idx in range(len(df))
         ],
-        "subnet": [
-            get_default(row.get("zone"), 101)
-            for _, row in df.iterrows()
-        ],
+        "subnet": [get_default(row.get("zone"), 101) for _, row in df.iterrows()],
         "v_rated": df["vn_kv"].tolist(),
         "v_target": df["vn_kv"].tolist(),
         "volt_lvl": [
-            get_default(row.get("vlt_lvl"), row["vn_kv"])
-            for _, row in df.iterrows()
+            get_default(row.get("vlt_lvl"), row["vn_kv"]) for _, row in df.iterrows()
         ],
-        "slack": ['false'] * len(df),
-        "operates_from": [
-            get_operation_times(row)[0]
-            for _, row in df.iterrows()
-        ],
-        "operates_until": [
-            get_operation_times(row)[1]
-            for _, row in df.iterrows()
-        ]
+        "slack": ["false"] * len(df),
+        "operates_from": [get_operation_times(row)[0] for _, row in df.iterrows()],
+        "operates_until": [get_operation_times(row)[1] for _, row in df.iterrows()],
     }
 
     return create_nodes(data_dict), node_index_uuid_map
@@ -103,14 +93,14 @@ def get_operation_times(row):
 
 
 def get_node_uuid(nodes, node_id):
-    for _, node_data in nodes.data.iterrows(): 
-        if node_data['id'] == node_id:
-            return node_data.name  
+    for _, node_data in nodes.data.iterrows():
+        if node_data["id"] == node_id:
+            return node_data.name
     raise ValueError(f"No matching node found for id {node_id}")
 
 
 def get_v_target_for_node(nodes, node_uuid):
-    return nodes[node_uuid]['v_target']
+    return nodes[node_uuid]["v_target"]
 
 
 def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
@@ -120,26 +110,29 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
 
     return g_us, b_us
 
+
 def convert_line_types(grid, nodes, node_index_uuid_map):
-    
+
     # Geo Position of Line not implemented
-    
+
     df = grid.line
     line_types = {}
 
     for idx, row in df.iterrows():
         line_index_line_type_uuid_map = {idx: str(uuid4()) for idx in df.index}
-        
+
         # Convert line parameters
-        g_us, b_us = line_param_conversion(row['c_nf_per_km'], row['g_us_per_km'])
+        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
 
         # Use index_uuid_map to retrieve UUIDs for from_bus and to_bus
-        node_a_uuid = node_index_uuid_map.get(row['from_bus'])
-        node_b_uuid = node_index_uuid_map.get(row['to_bus'])
+        node_a_uuid = node_index_uuid_map.get(row["from_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["to_bus"])
 
         # Check if the UUIDs were found
         if node_a_uuid is None or node_b_uuid is None:
-            raise KeyError(f"UUID not found for from_bus {row['from_bus']} or to_bus {row['to_bus']}")
+            raise KeyError(
+                f"UUID not found for from_bus {row['from_bus']} or to_bus {row['to_bus']}"
+            )
 
         # Retrieve v_target for node_a and node_b (assuming these functions exist)
         v_target_a = get_v_target_for_node(nodes, node_a_uuid)
@@ -148,23 +141,24 @@ def convert_line_types(grid, nodes, node_index_uuid_map):
         # Ensure v_target_a and v_target_b are the same
         if v_target_a != v_target_b:
             raise ValueError(
-                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}")
+                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}"
+            )
 
         uuid = line_index_line_type_uuid_map[idx]
-        
+
         line_types[uuid] = {
-            'uuid': uuid,
-            'r': row['r_ohm_per_km'],
-            'x': row['x_ohm_per_km'],
-            'b': b_us,
-            'g': g_us,
-            'i_max': row['max_i_ka'] * 1000,  # Convert to amperes
-            'id': f"line_type_{idx + 1}",
-            'v_rated': v_target_a,
+            "uuid": uuid,
+            "r": row["r_ohm_per_km"],
+            "x": row["x_ohm_per_km"],
+            "b": b_us,
+            "g": g_us,
+            "i_max": row["max_i_ka"] * 1000,  # Convert to amperes
+            "id": f"line_type_{idx + 1}",
+            "v_rated": v_target_a,
         }
 
-    line_types = pd.DataFrame.from_dict(line_types, orient='index').reset_index()
-    line_types = line_types.set_index('uuid').drop(columns='index')
+    line_types = pd.DataFrame.from_dict(line_types, orient="index").reset_index()
+    line_types = line_types.set_index("uuid").drop(columns="index")
     return line_types, line_index_line_type_uuid_map
 
 
@@ -182,26 +176,26 @@ def convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map):
             raise ValueError(f"No matching line type found for line {row['name']}")
 
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = node_index_uuid_map.get(row['from_bus'])
-        node_b_uuid = node_index_uuid_map.get(row['to_bus'])
+        node_a_uuid = node_index_uuid_map.get(row["from_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["to_bus"])
 
         # Collect data for each line
         line_data = {
-            'id': row['name'],
-            'uuid': line_index_uuid_map[idx],
-            'geo_position': None,
-            'length': row['length_km'],
-            'node_a': node_a_uuid,
-            'node_b': node_b_uuid,
-            'olm_characteristic': "olm:{(0.0,1.0)}",
+            "id": row["name"],
+            "uuid": line_index_uuid_map[idx],
+            "geo_position": None,
+            "length": row["length_km"],
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
+            "olm_characteristic": "olm:{(0.0,1.0)}",
             "operates_from": get_operation_times(row)[0],
             "operates_until": get_operation_times(row)[1],
-            'operator': None,
-            'parallel_devices': row['parallel'],
-            'type': line_type_uuid,
+            "operator": None,
+            "parallel_devices": row["parallel"],
+            "type": line_type_uuid,
         }
         lines_data.append(line_data)
-        
+
     data_dict = {key: [d[key] for d in lines_data] for key in lines_data[0]}
 
     return create_lines(data_dict)

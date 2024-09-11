@@ -58,7 +58,11 @@ def read_csv(
         raise IOError("File with path: " + str(full_path) + " does not exist")
     if index_col:
         return pd.read_csv(
-            full_path, delimiter=delimiter, quotechar='"', index_col=index_col, compression="zip"
+            full_path,
+            delimiter=delimiter,
+            quotechar='"',
+            index_col=index_col,
+            compression="zip",
         )
     else:
         return pd.read_csv(full_path, delimiter=delimiter, quotechar='"')
