@@ -163,63 +163,48 @@ def convert_line_types(grid, nodes, node_index_uuid_map):
             'v_rated': v_target_a,
         }
 
-    return line_types
-def convert_lines(df, line_types, nodes):
     line_types = pd.DataFrame.from_dict(line_types, orient='index').reset_index()
     line_types = line_types.set_index('uuid').drop(columns='index')
     return line_types, line_index_line_type_uuid_map
+
+
+def convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map):
+    df = grid.line
     lines_data = []
 
+    # Create a mapping of line index to UUID
+    line_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
+
     for idx, row in df.iterrows():
-        # Find the corresponding line type based on r, x, c, g, max_i_ka
-        line_type_uuid = None
-
-        for uuid, line_type_data in line_types.items():
-            if (
-                    line_type_data['r'] == row['r_ohm_per_km'] and
-                    line_type_data['x'] == row['x_ohm_per_km'] and
-                    line_type_data['b'] == row['c_nf_per_km'] and
-                    line_type_data['g'] == row['g_us_per_km'] and
-                    line_type_data['i_max'] == row['max_i_ka']
-            ):
-                line_type_uuid = uuid
-                break
-
-        # If no matching line type is found, there might be an issue
+        # Retrieve line type UUID
+        line_type_uuid = line_index_line_type_uuid_map.get(idx)
         if not line_type_uuid:
             raise ValueError(f"No matching line type found for line {row['name']}")
 
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row['from_bus'])
-        node_b_uuid = get_node_uuid(nodes, row['to_bus'])
+        node_a_uuid = node_index_uuid_map.get(row['from_bus'])
+        node_b_uuid = node_index_uuid_map.get(row['to_bus'])
 
-        # Set operates_from and operates_until based on in_service status
-        if row['in_service']:
-            operates_from = None
-            operates_until = None
-        else:
-            operates_from = datetime(1980, 1, 1)
-            operates_until = datetime(1980, 12, 31)
-
-        # Create line data
+        # Collect data for each line
         line_data = {
-            'uuid': row["uuid"],
-            'geo_position': None,
             'id': row['name'],
+            'uuid': line_index_uuid_map[idx],
+            'geo_position': None,
             'length': row['length_km'],
             'node_a': node_a_uuid,
             'node_b': node_b_uuid,
             'olm_characteristic': "olm:{(0.0,1.0)}",
-            'operates_from': operates_from,
-            'operates_until': operates_until,
+            "operates_from": get_operation_times(row)[0],
+            "operates_until": get_operation_times(row)[1],
             'operator': None,
             'parallel_devices': row['parallel'],
             'type': line_type_uuid,
         }
-
         lines_data.append(line_data)
+        
+    data_dict = {key: [d[key] for d in lines_data] for key in lines_data[0]}
 
-    return lines_data
+    return create_lines(data_dict)
 
 
 def convert_transformer(net: pp.pandapowerNet, trafo_data: pd.Series, uuid_idx: dict):

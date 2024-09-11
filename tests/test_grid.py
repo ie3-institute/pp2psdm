@@ -63,20 +63,25 @@ def test_line_types_conversion(input_data):
 
 
 
-    assert idx == 0
-    assert net["line"]["name"].iloc[idx] == input_line["id"]
-    assert net["line"]["from_bus"].iloc[idx] == noda_a_idx
-    assert net["line"]["to_bus"].iloc[idx] == noda_b_idx
+def test_lines_conversion(input_data):
+    expected, input = input_data
+    len = input.line.shape[0]
+    nodes, node_index_uuid_map = convert_nodes(input)
+    line_types, line_index_line_type_uuid_map = convert_line_types(input, nodes, node_index_uuid_map)
 
-    sb_lines = expected.line[expected.line["name"] == input_line["id"]]
-    assert len(sb_lines) == 1
-    sb_line = sb_lines.iloc[0]
-    assert net["line"]["length_km"].iloc[idx] == sb_line["length_km"]
-    assert math.isclose(net["line"]["r_ohm_per_km"].iloc[idx], sb_line["r_ohm_per_km"])
-    assert math.isclose(net["line"]["x_ohm_per_km"].iloc[idx], sb_line["x_ohm_per_km"])
-    assert math.isclose(net["line"]["c_nf_per_km"].iloc[idx], sb_line["c_nf_per_km"])
-    assert math.isclose(net["line"]["g_us_per_km"].iloc[idx], sb_line["g_us_per_km"])
-    assert math.isclose(net["line"]["max_i_ka"].iloc[idx], sb_line["max_i_ka"])
+    net = convert_lines(input, line_index_line_type_uuid_map, node_index_uuid_map)
+
+    for i in range(len):
+        assert net.data.iloc[i]['id'] == input.line.iloc[i]["name"]
+        assert net.data.iloc[i]["node_a"] == node_index_uuid_map.get(input.line.iloc[i]["from_bus"])
+        assert net.data.iloc[i]["node_b"] == node_index_uuid_map.get(input.line.iloc[i]["to_bus"])
+        assert net.data.iloc[i]["length"] == input.line.iloc[i]["length_km"]
+        assert net.data.iloc[i]["olm_characteristic"] == "olm:{(0.0,1.0)}"
+        assert net.data.iloc[i]["operates_from"] == None
+        assert net.data.iloc[i]["operates_until"] == None
+        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["parallel_devices"] == input.line.iloc[i]["parallel"]
+        assert net.data.iloc[i]["type"] == line_index_line_type_uuid_map.get(i)
 
 
 def test_trafo_conversion(input_data):
