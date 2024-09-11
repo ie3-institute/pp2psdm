@@ -46,16 +46,22 @@ def test_nodes_conversion(input_data):
         assert net.data.iloc[i]["geo_position"] == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
 
 
-def test_line_conversion(input_data):
+def test_line_types_conversion(input_data):
     expected, input = input_data
-    net = pp.create_empty_network()
-    input_line = input.lines.data.iloc[0]
-    node_a = input.nodes.data.loc[input_line["node_a"]]
-    node_b = input.nodes.data.loc[input_line["node_b"]]
-    noda_a_idx = convert_node(net, node_a)
-    noda_b_idx = convert_node(net, node_b)
-    uuid_idx = {node_a.name: noda_a_idx, node_b.name: noda_b_idx}
-    idx = convert_line(net, input_line, uuid_idx)
+    len = input.line.shape[0]
+    nodes, node_index_uuid_map = convert_nodes(input)
+    net, _ = convert_line_types(input, nodes, index_uuid_map)
+
+    for i in range(len):
+        assert net.iloc[i]["v_rated"] == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["from_bus"]))['v_target']
+        assert net.iloc[i]["v_rated"] == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["to_bus"]))['v_target']
+        assert math.isclose(net.iloc[i]["r"], input.line.iloc[i]["r_ohm_per_km"])
+        assert math.isclose(net.iloc[i]["x"], input.line.iloc[i]["x_ohm_per_km"])
+        assert math.isclose(net.iloc[i]["b"], input.line.iloc[i]["c_nf_per_km"] * 2 * np.pi * 50 * 1e-3)
+        assert math.isclose(net.iloc[i]["g"], input.line.iloc[i]["g_us_per_km"])
+        assert math.isclose(net.iloc[i]["i_max"], input.line.iloc[i]["max_i_ka"] * 1000)
+
+
 
     assert idx == 0
     assert net["line"]["name"].iloc[idx] == input_line["id"]

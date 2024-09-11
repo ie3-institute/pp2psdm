@@ -103,10 +103,11 @@ def get_operation_times(row):
 
 
 def get_node_uuid(nodes, node_id):
-    for uuid, node_data in nodes.items():
+    for _, node_data in nodes.data.iterrows(): 
         if node_data['id'] == node_id:
-            return uuid
+            return node_data.name  
     raise ValueError(f"No matching node found for id {node_id}")
+
 
 def get_v_target_for_node(nodes, node_uuid):
     return nodes[node_uuid]['v_target']
@@ -119,43 +120,54 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
 
     return g_us, b_us
 
-def convert_line_types(df, nodes):
-    line_type_columns = ['r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'g_us_per_km', 'max_i_ka']
-    unique_line_types = df[line_type_columns].drop_duplicates().reset_index(drop=True)
-
+def convert_line_types(grid, nodes, node_index_uuid_map):
+    
+    # Geo Position of Line not implemented
+    
+    df = grid.line
     line_types = {}
 
-    for idx, row in unique_line_types.iterrows():
-        uuid = str(uuid4())
-
+    for idx, row in df.iterrows():
+        line_index_line_type_uuid_map = {idx: str(uuid4()) for idx in df.index}
+        
+        # Convert line parameters
         g_us, b_us = line_param_conversion(row['c_nf_per_km'], row['g_us_per_km'])
 
-        # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row['from_bus'])
-        node_b_uuid = get_node_uuid(nodes, row['to_bus'])
+        # Use index_uuid_map to retrieve UUIDs for from_bus and to_bus
+        node_a_uuid = node_index_uuid_map.get(row['from_bus'])
+        node_b_uuid = node_index_uuid_map.get(row['to_bus'])
 
-        # Retrieve v_target for node_a and node_b
+        # Check if the UUIDs were found
+        if node_a_uuid is None or node_b_uuid is None:
+            raise KeyError(f"UUID not found for from_bus {row['from_bus']} or to_bus {row['to_bus']}")
+
+        # Retrieve v_target for node_a and node_b (assuming these functions exist)
         v_target_a = get_v_target_for_node(nodes, node_a_uuid)
         v_target_b = get_v_target_for_node(nodes, node_b_uuid)
 
         # Ensure v_target_a and v_target_b are the same
         if v_target_a != v_target_b:
-            raise ValueError(f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}")
+            raise ValueError(
+                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}")
 
-
+        uuid = line_index_line_type_uuid_map[idx]
+        
         line_types[uuid] = {
             'uuid': uuid,
             'r': row['r_ohm_per_km'],
             'x': row['x_ohm_per_km'],
             'b': b_us,
             'g': g_us,
-            'i_max': row['max_i_ka'] * 1000,
+            'i_max': row['max_i_ka'] * 1000,  # Convert to amperes
             'id': f"line_type_{idx + 1}",
             'v_rated': v_target_a,
         }
 
     return line_types
 def convert_lines(df, line_types, nodes):
+    line_types = pd.DataFrame.from_dict(line_types, orient='index').reset_index()
+    line_types = line_types.set_index('uuid').drop(columns='index')
+    return line_types, line_index_line_type_uuid_map
     lines_data = []
 
     for idx, row in df.iterrows():
