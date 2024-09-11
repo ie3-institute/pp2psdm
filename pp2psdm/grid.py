@@ -45,15 +45,28 @@ def convert_grid(
 
     return net, uuid_idx
 
+def get_default(value, default):
+    return value if not pd.isna(value) else default
+
 def convert_nodes(grid):
     df = grid.bus
+    geodata = grid.bus_geodata
 
-    def get_default(value, default):
-        return value if not pd.isna(value) else default
+
+    def format_geo_position(row):
+        if not pd.isna(row["x"]) and not pd.isna(row["y"]):
+            return f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
+        return None
+
+    node_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
     data_dict = {
         "id": df["name"].tolist(),
-        "geo_position": [None] * len(df),
+        "uuid": [node_index_uuid_map[idx] for idx in df.index],
+        "geo_position": [
+            format_geo_position(geodata.iloc[idx])
+            for idx in range(len(df))
+        ],
         "subnet": [
             get_default(row.get("zone"), 101)
             for _, row in df.iterrows()
@@ -75,7 +88,7 @@ def convert_nodes(grid):
         ]
     }
 
-    return create_nodes(data_dict)
+    return create_nodes(data_dict), node_index_uuid_map
 
 
 def get_operation_times(row):

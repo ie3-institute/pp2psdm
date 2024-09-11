@@ -2,15 +2,15 @@ import math
 
 import pandapower as pp
 import pytest
-
-from pp2psdm.grid import convert_grid, convert_line, convert_node, convert_transformer
+import numpy as np
+from pp2psdm.grid import convert_grid, convert_line_types, convert_lines, convert_nodes#, convert_transformers
 from tests.utils import read_psdm_lv, read_sb_lv
 
 
 @pytest.fixture
 def input_data():
-    expected = read_sb_lv()
-    input = read_psdm_lv()
+    expected = read_psdm_lv() 
+    input = read_sb_lv()
     return expected, input
 
 
@@ -32,18 +32,18 @@ def test_convert_grid(input_data):
         assert net.trafo.name.iloc[idx] == input.transformers_2_w.data.loc[uuid]["id"]
 
 
-def test_node_conversion(input_data):
+def test_nodes_conversion(input_data):
     _, input = input_data
-    net = pp.create_empty_network()
-    input_node = input.nodes.data.iloc[0]
-    idx = convert_node(net, input_node)
-    assert idx == 0
-    assert net["bus"]["name"].iloc[idx] == input_node["id"]
-    assert net["bus"]["vn_kv"].iloc[idx] == input_node["v_rated"]
-    assert net["bus"]["subnet"].iloc[idx] == input_node["subnet"]
-    assert net["bus"]["in_service"].iloc[idx]
-    assert net["bus_geodata"]["x"].iloc[idx] == input_node["longitude"]
-    assert net["bus_geodata"]["y"].iloc[idx] == input_node["latitude"]
+    len = input.bus.shape[0]
+    net, _ = convert_nodes(input)
+    for i in range(len):   
+        assert net.data.iloc[i]['id'] == input.bus.iloc[i]["name"]
+        assert net.data.iloc[i]["v_rated"] == input.bus.iloc[i]["vn_kv"]
+        assert net.data.iloc[i]["subnet"] == 101
+        assert net.data.iloc[i]["operates_from"] == None
+        assert net.data.iloc[i]["operates_until"] == None
+        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["geo_position"] == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
 
 
 def test_line_conversion(input_data):
