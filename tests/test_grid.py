@@ -20,6 +20,7 @@ def input_data():
 
 
 def test_convert_grid(input_data):
+    _, input = input_data
     net = convert_grid(input)
     assert len(net.nodes) == len(input.bus)
     assert len(net.lines) == len(input.line)
