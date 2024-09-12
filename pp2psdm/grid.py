@@ -46,54 +46,36 @@ def convert_grid(
     return net, uuid_idx
 
 def convert_nodes(grid):
-    nodes_data = {}
-
     df = grid.bus
 
-    for idx, row in df.iterrows():
-        # TODO SLACK?
+    def get_default(value, default):
+        return value if not pd.isna(value) else default
 
-        # Get operation times
-        operates_from, operates_until = get_operation_times(row)
+    data_dict = {
+        "id": df["name"].tolist(),
+        "geo_position": [None] * len(df),
+        "subnet": [
+            get_default(row.get("zone"), 101)
+            for _, row in df.iterrows()
+        ],
+        "v_rated": df["vn_kv"].tolist(),
+        "v_target": df["vn_kv"].tolist(),
+        "volt_lvl": [
+            get_default(row.get("vlt_lvl"), row["vn_kv"])
+            for _, row in df.iterrows()
+        ],
+        "slack": ['false'] * len(df),
+        "operates_from": [
+            get_operation_times(row)[0]
+            for _, row in df.iterrows()
+        ],
+        "operates_until": [
+            get_operation_times(row)[1]
+            for _, row in df.iterrows()
+        ]
+    }
 
-        # Determine the voltage level (vlt_lvl or vn_kv)
-        if "vlt_lvl" in df.columns and not pd.isna(row["vlt_lvl"]):
-            volt_lvl = row["vlt_lvl"]
-        else:
-            volt_lvl = row["vn_kv"]
-
-        # Determine the subnet (subnet, zone, or fixed number)
-        if "subnet" in df.columns and not pd.isna(row["subnet"]):
-            subnet = row["subnet"]
-        elif "zone" in df.columns and not pd.isna(row["zone"]):
-            subnet = row["zone"]
-        else:
-            subnet = 101
-
-        node_data = create_nodes_data(
-            uuid=row["uuid"],
-            geo_position=None,
-            id=row["name"],
-            subnet=subnet,
-            v_rated=row["vn_kv"],
-            v_target=row["vn_kv"],
-            volt_lvl=volt_lvl,
-            operates_from=operates_from,
-            operates_until=operates_until,
-            operator=None,
-            slack=False
-        )
-        nodes_data[node_data.name] = node_data
-
-        if row["uuid"] == '1f6e5dd7-9bd7-4bb5-9ff9-56000a6cd14b':
-            print(node_data)
-
-
-      #  if row["uuid"] == '798443cf-7d59-4e95-aaf5-955f65531bac':
-      #      print(node_data)
-
-
-    return create_nodes(nodes_data)
+    return create_nodes(data_dict)
 
 
 def get_operation_times(row):
