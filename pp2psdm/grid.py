@@ -8,8 +8,6 @@ import numpy as np
 import pandapower as pp
 import pandas as pd
 from pypsdm.models.input.container.raw_grid import RawGridContainer
-from pypsdm.models.input.create.participants import create_data
-from pypsdm.models.input.create.grid_elements import create_nodes, create_nodes_data, create_lines, create_lines_data
 
 
 @dataclass
@@ -25,25 +23,12 @@ def convert_grid(
 
     uuid_idx = UuidIdxMaps()
 
-    net = RawGridContainer.empty(
-    )
-
-    nodes = convert_nodes(grid.bus)
-
-    convert_lines(grid)
-
-
-    for uuid, line in grid.line.data.iterrows():
-        idx = convert_line(net, line, uuid_idx.node)
-        uuid_idx.line[uuid] = idx  # type: ignore
-
-    for uuid, trafo in grid.trafo.data.iterrows():
-        idx = convert_transformer(net, trafo, uuid_idx.node)
-        uuid_idx.trafo[uuid] = idx  # type: ignore
+    net = RawGridContainer.empty()
 
     # TODO convert switches
 
     return net, uuid_idx
+
 
 def convert_nodes(grid):
     df = grid.bus
@@ -54,28 +39,18 @@ def convert_nodes(grid):
     data_dict = {
         "id": df["name"].tolist(),
         "geo_position": [None] * len(df),
-        "subnet": [
-            get_default(row.get("zone"), 101)
-            for _, row in df.iterrows()
-        ],
+        "subnet": [get_default(row.get("zone"), 101) for _, row in df.iterrows()],
         "v_rated": df["vn_kv"].tolist(),
         "v_target": df["vn_kv"].tolist(),
         "volt_lvl": [
-            get_default(row.get("vlt_lvl"), row["vn_kv"])
-            for _, row in df.iterrows()
+            get_default(row.get("vlt_lvl"), row["vn_kv"]) for _, row in df.iterrows()
         ],
-        "slack": ['false'] * len(df),
-        "operates_from": [
-            get_operation_times(row)[0]
-            for _, row in df.iterrows()
-        ],
-        "operates_until": [
-            get_operation_times(row)[1]
-            for _, row in df.iterrows()
-        ]
+        "slack": ["false"] * len(df),
+        "operates_from": [get_operation_times(row)[0] for _, row in df.iterrows()],
+        "operates_until": [get_operation_times(row)[1] for _, row in df.iterrows()],
     }
 
-    return create_nodes(data_dict)
+    return data_dict
 
 
 def get_operation_times(row):
@@ -91,12 +66,13 @@ def get_operation_times(row):
 
 def get_node_uuid(nodes, node_id):
     for uuid, node_data in nodes.items():
-        if node_data['id'] == node_id:
+        if node_data["id"] == node_id:
             return uuid
     raise ValueError(f"No matching node found for id {node_id}")
 
+
 def get_v_target_for_node(nodes, node_uuid):
-    return nodes[node_uuid]['v_target']
+    return nodes[node_uuid]["v_target"]
 
 
 def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
@@ -106,8 +82,15 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
 
     return g_us, b_us
 
+
 def convert_line_types(df, nodes):
-    line_type_columns = ['r_ohm_per_km', 'x_ohm_per_km', 'c_nf_per_km', 'g_us_per_km', 'max_i_ka']
+    line_type_columns = [
+        "r_ohm_per_km",
+        "x_ohm_per_km",
+        "c_nf_per_km",
+        "g_us_per_km",
+        "max_i_ka",
+    ]
     unique_line_types = df[line_type_columns].drop_duplicates().reset_index(drop=True)
 
     line_types = {}
@@ -115,11 +98,11 @@ def convert_line_types(df, nodes):
     for idx, row in unique_line_types.iterrows():
         uuid = str(uuid4())
 
-        g_us, b_us = line_param_conversion(row['c_nf_per_km'], row['g_us_per_km'])
+        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
 
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row['from_bus'])
-        node_b_uuid = get_node_uuid(nodes, row['to_bus'])
+        node_a_uuid = get_node_uuid(nodes, row["from_bus"])
+        node_b_uuid = get_node_uuid(nodes, row["to_bus"])
 
         # Retrieve v_target for node_a and node_b
         v_target_a = get_v_target_for_node(nodes, node_a_uuid)
@@ -127,21 +110,24 @@ def convert_line_types(df, nodes):
 
         # Ensure v_target_a and v_target_b are the same
         if v_target_a != v_target_b:
-            raise ValueError(f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}")
-
+            raise ValueError(
+                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}"
+            )
 
         line_types[uuid] = {
-            'uuid': uuid,
-            'r': row['r_ohm_per_km'],
-            'x': row['x_ohm_per_km'],
-            'b': b_us,
-            'g': g_us,
-            'i_max': row['max_i_ka'] * 1000,
-            'id': f"line_type_{idx + 1}",
-            'v_rated': v_target_a,
+            "uuid": uuid,
+            "r": row["r_ohm_per_km"],
+            "x": row["x_ohm_per_km"],
+            "b": b_us,
+            "g": g_us,
+            "i_max": row["max_i_ka"] * 1000,
+            "id": f"line_type_{idx + 1}",
+            "v_rated": v_target_a,
         }
 
     return line_types
+
+
 def convert_lines(df, line_types, nodes):
     lines_data = []
 
@@ -149,27 +135,16 @@ def convert_lines(df, line_types, nodes):
         # Find the corresponding line type based on r, x, c, g, max_i_ka
         line_type_uuid = None
 
-        for uuid, line_type_data in line_types.items():
-            if (
-                    line_type_data['r'] == row['r_ohm_per_km'] and
-                    line_type_data['x'] == row['x_ohm_per_km'] and
-                    line_type_data['b'] == row['c_nf_per_km'] and
-                    line_type_data['g'] == row['g_us_per_km'] and
-                    line_type_data['i_max'] == row['max_i_ka']
-            ):
-                line_type_uuid = uuid
-                break
-
         # If no matching line type is found, there might be an issue
         if not line_type_uuid:
             raise ValueError(f"No matching line type found for line {row['name']}")
 
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row['from_bus'])
-        node_b_uuid = get_node_uuid(nodes, row['to_bus'])
+        node_a_uuid = get_node_uuid(nodes, row["from_bus"])
+        node_b_uuid = get_node_uuid(nodes, row["to_bus"])
 
         # Set operates_from and operates_until based on in_service status
-        if row['in_service']:
+        if row["in_service"]:
             operates_from = None
             operates_until = None
         else:
@@ -178,18 +153,18 @@ def convert_lines(df, line_types, nodes):
 
         # Create line data
         line_data = {
-            'uuid': row["uuid"],
-            'geo_position': None,
-            'id': row['name'],
-            'length': row['length_km'],
-            'node_a': node_a_uuid,
-            'node_b': node_b_uuid,
-            'olm_characteristic': "olm:{(0.0,1.0)}",
-            'operates_from': operates_from,
-            'operates_until': operates_until,
-            'operator': None,
-            'parallel_devices': row['parallel'],
-            'type': line_type_uuid,
+            "uuid": row["uuid"],
+            "geo_position": None,
+            "id": row["name"],
+            "length": row["length_km"],
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
+            "olm_characteristic": "olm:{(0.0,1.0)}",
+            "operates_from": operates_from,
+            "operates_until": operates_until,
+            "operator": None,
+            "parallel_devices": row["parallel"],
+            "type": line_type_uuid,
         }
 
         lines_data.append(line_data)

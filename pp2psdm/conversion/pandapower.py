@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 import pandas as pd
-
 from pypsdm.models.enums import (
     EntitiesEnum,
     RawGridElementsEnum,
