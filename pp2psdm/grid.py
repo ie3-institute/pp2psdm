@@ -27,16 +27,10 @@ def convert_grid(grid: pp.pandapowerNet) -> Tuple[RawGridContainer]:
 
     nodes, node_index_uuid_map = convert_nodes(grid)
 
-    line_types, line_index_line_type_uuid_map = convert_line_types(
-        grid, nodes, node_index_uuid_map
-    )
-
-    lines = convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map)
-
-    transformer_types, trafo_index_trafo_type_uuid_map = convert_transformer_types(grid)
+    lines = convert_lines(grid, nodes, node_index_uuid_map)
 
     transformers = convert_transformers(
-        grid, trafo_index_trafo_type_uuid_map, node_index_uuid_map
+        grid, node_index_uuid_map
     )
 
     # TODO convert switches
@@ -111,23 +105,17 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
     return g_us, b_us
 
 
-def convert_line_types(grid, nodes, node_index_uuid_map):
 
-    # Geo Position of Line not implemented
-
+def convert_lines(grid, nodes, node_index_uuid_map):
     df = grid.line
-    line_types = {}
+    lines_data = []
 
     for idx, row in df.iterrows():
-        line_index_line_type_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
-        # Convert line parameters
-        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
-
-        # Use index_uuid_map to retrieve UUIDs for from_bus and to_bus
+        # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
         node_a_uuid = node_index_uuid_map.get(row["from_bus"])
         node_b_uuid = node_index_uuid_map.get(row["to_bus"])
-
+        
         # Check if the UUIDs were found
         if node_a_uuid is None or node_b_uuid is None:
             raise KeyError(
@@ -144,55 +132,27 @@ def convert_line_types(grid, nodes, node_index_uuid_map):
                 f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}"
             )
 
-        uuid = line_index_line_type_uuid_map[idx]
+        # Convert line parameters
+        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
 
-        line_types[uuid] = {
-            "uuid": uuid,
+        # Collect data for each line
+        line_data = {
+            "id": row["name"],
+            "geo_position": None,
+            "length": row["length_km"],
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
             "r": row["r_ohm_per_km"],
             "x": row["x_ohm_per_km"],
             "b": b_us,
             "g": g_us,
             "i_max": row["max_i_ka"] * 1000,  # Convert to amperes
-            "id": f"line_type_{idx + 1}",
             "v_rated": v_target_a,
-        }
-
-    line_types = pd.DataFrame.from_dict(line_types, orient="index").reset_index()
-    line_types = line_types.set_index("uuid").drop(columns="index")
-    return line_types, line_index_line_type_uuid_map
-
-
-def convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map):
-    df = grid.line
-    lines_data = []
-
-    # Create a mapping of line index to UUID
-    line_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
-
-    for idx, row in df.iterrows():
-        # Retrieve line type UUID
-        line_type_uuid = line_index_line_type_uuid_map.get(idx)
-        if not line_type_uuid:
-            raise ValueError(f"No matching line type found for line {row['name']}")
-
-        # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = node_index_uuid_map.get(row["from_bus"])
-        node_b_uuid = node_index_uuid_map.get(row["to_bus"])
-
-        # Collect data for each line
-        line_data = {
-            "id": row["name"],
-            "uuid": line_index_uuid_map[idx],
-            "geo_position": None,
-            "length": row["length_km"],
-            "node_a": node_a_uuid,
-            "node_b": node_b_uuid,
             "olm_characteristic": "olm:{(0.0,1.0)}",
             "operates_from": get_operation_times(row)[0],
             "operates_until": get_operation_times(row)[1],
             "operator": None,
             "parallel_devices": row["parallel"],
-            "type": line_type_uuid,
         }
         lines_data.append(line_data)
 
@@ -201,13 +161,11 @@ def convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map):
     return create_lines(data_dict)
 
 
-def convert_transformer_types(grid):
+def convert_transformers(grid, node_index_uuid_map):
     df = grid.trafo
-    trafo_types = {}
+    transformers_data = []
 
     for idx, row in df.iterrows():
-        trafo_index_trafo_type_uuid_map = {idx: str(uuid4()) for idx in df.index}
-
         # Convert trafo parameters
         rSc, xSc, gM, bM = trafo_param_conversion(
             row["vk_percent"],
@@ -220,15 +178,21 @@ def convert_transformer_types(grid):
 
         tap_side = True if row["tap_side"] == "hv" else False
 
-        uuid = trafo_index_trafo_type_uuid_map[idx]
+        # Retrieve node_a and node_b UUIDs based on hv_bus and lv_bus
+        node_a_uuid = node_index_uuid_map.get(row["hv_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["lv_bus"])
 
-        trafo_types[uuid] = {
-            "uuid": uuid,
+        autoTap = True if row["autoTap"] == 1 else False
+
+        trafo_data = {
+            "id": row["name"],
+            "auto_tap": autoTap,
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
             "b_m": bM,
             "d_phi": row["tap_step_degree"],
             "d_v": row["tap_step_percent"],
             "g_m": gM,
-            "id": f"trafo2w_type_{idx + 1}",
             "r_sc": rSc,
             "s_rated": row["sn_mva"] * 1000,  # Convert to kVA
             "tap_max": row["tap_max"],
@@ -238,49 +202,11 @@ def convert_transformer_types(grid):
             "v_rated_a": row["vn_hv_kv"],
             "v_rated_b": row["vn_lv_kv"],
             "x_sc": xSc,
-        }
-
-    trafo_types = pd.DataFrame.from_dict(trafo_types, orient="index").reset_index()
-    trafo_types = trafo_types.set_index("uuid").drop(columns="index")
-    return trafo_types, trafo_index_trafo_type_uuid_map
-
-
-def convert_transformers(grid, trafo_index_trafo_type_uuid_map, node_index_uuid_map):
-    df = grid.trafo
-    transformers_data = []
-
-    # Create a mapping of line index to UUID
-    trafo_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
-
-    for idx, row in df.iterrows():
-        # Retrieve trafo type UUID
-        trafo_type_uuid = trafo_index_trafo_type_uuid_map.get(idx)
-
-        if not trafo_type_uuid:
-            raise ValueError(
-                f"No matching transformer type found for transformer {row['name']}"
-            )
-
-        # Retrieve node_a and node_b UUIDs based on hv_bus and lv_bus
-        node_a_uuid = node_index_uuid_map.get(row["hv_bus"])
-        node_b_uuid = node_index_uuid_map.get(row["lv_bus"])
-
-        # Collect data for each transformer
-
-        autoTap = True if row["autoTap"] == 1 else False
-
-        trafo_data = {
-            "id": row["name"],
-            "uuid": trafo_index_uuid_map[idx],
-            "auto_tap": autoTap,
-            "node_a": node_a_uuid,
-            "node_b": node_b_uuid,
             "operates_from": get_operation_times(row)[0],
             "operates_until": get_operation_times(row)[1],
             "operator": None,
             "parallel_devices": row["parallel"],
             "tap_pos": row["tap_pos"],
-            "type": trafo_type_uuid,
         }
         transformers_data.append(trafo_data)
 
