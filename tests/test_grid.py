@@ -43,17 +43,16 @@ def test_nodes_conversion(input_data):
     _, input = input_data
     len = input.bus.shape[0]
     net, _ = convert_nodes(input)
+
     for i in range(len):
+        coord_string = f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
         assert net.data.iloc[i]["id"] == input.bus.iloc[i]["name"]
         assert net.data.iloc[i]["v_rated"] == input.bus.iloc[i]["vn_kv"]
         assert net.data.iloc[i]["subnet"] == 101
         assert net.data.iloc[i]["operates_from"] is None
         assert net.data.iloc[i]["operates_until"] is None
         assert net.data.iloc[i]["operator"] is None
-        assert (
-            net.data.iloc[i]["geo_position"]
-            == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
-        )
+        assert net.data.iloc[i]["geo_position"] == coord_string
 
 
 def test_line_types_conversion(input_data):
@@ -63,18 +62,11 @@ def test_line_types_conversion(input_data):
     net, _ = convert_line_types(input, nodes, node_index_uuid_map)
 
     for i in range(len):
-        assert (
-            net.iloc[i]["v_rated"]
-            == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["from_bus"]))[
-                "v_target"
-            ]
-        )
-        assert (
-            net.iloc[i]["v_rated"]
-            == nodes.get(node_index_uuid_map.get(input.line.iloc[i]["to_bus"]))[
-                "v_target"
-            ]
-        )
+
+        node_from_bus = node_index_uuid_map.get(input.line.iloc[i]["from_bus"])
+        assert net.iloc[i]["v_rated"] == nodes.get(node_from_bus)["v_target"]
+        node_to_bus = node_index_uuid_map.get(input.line.iloc[i]["to_bus"])
+        assert net.iloc[i]["v_rated"] == nodes.get(node_to_bus)["v_target"]
         assert math.isclose(net.iloc[i]["r"], input.line.iloc[i]["r_ohm_per_km"])
         assert math.isclose(net.iloc[i]["x"], input.line.iloc[i]["x_ohm_per_km"])
         assert math.isclose(
