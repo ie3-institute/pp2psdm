@@ -7,8 +7,10 @@ from uuid import uuid4
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from pypsdm.models.input.connector import Switches
 from pypsdm.models.input.container.raw_grid import RawGridContainer
 from pypsdm.models.input.create.grid_elements import (
+    create_2w_transformers,
     create_lines,
     create_nodes,
 )
@@ -23,27 +25,27 @@ class UuidIdxMaps:
 
 def convert_grid(
     grid: pp.pandapowerNet, name: str = "", s_rated_mva: float = 1
-) -> Tuple[RawGridContainer, UuidIdxMaps]:
+) -> Tuple[RawGridContainer]:
 
-    uuid_idx = UuidIdxMaps()
+    nodes, node_index_uuid_map = convert_nodes(grid)
 
-    net = RawGridContainer.empty()
+    line_types, line_index_line_type_uuid_map = convert_line_types(
+        grid, nodes, node_index_uuid_map
+    )
 
-    nodes = convert_nodes(grid.bus)
+    lines = convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map)
 
-    convert_lines(grid)
+    transformer_types, trafo_index_trafo_type_uuid_map = convert_transformer_types(grid)
 
-    for uuid, line in grid.line.data.iterrows():
-        idx = convert_line(net, line, uuid_idx.node)
-        uuid_idx.line[uuid] = idx  # type: ignore
-
-    for uuid, trafo in grid.trafo.data.iterrows():
-        idx = convert_transformer(net, trafo, uuid_idx.node)
-        uuid_idx.trafo[uuid] = idx  # type: ignore
+    transformers = convert_transformers(
+        grid, trafo_index_trafo_type_uuid_map, node_index_uuid_map
+    )
 
     # TODO convert switches
 
-    return net, uuid_idx
+    net = RawGridContainer(nodes, lines, transformers, Switches.create_empty)
+
+    return net
 
 
 def get_default(value, default):
