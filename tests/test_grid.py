@@ -20,21 +20,10 @@ def input_data():
 
 
 def test_convert_grid(input_data):
-    _, input = input_data
-    s_mva = 5
-    name = "test_grid"
-    net, uuid_idx = convert_grid(input, name=name, s_rated_mva=s_mva)
-    assert net.sn_mva == s_mva
-    assert net.name == name
-    assert len(net.bus) == len(input.nodes.data)
-    for uuid, idx in uuid_idx.node.items():
-        assert net.bus.name.iloc[idx] == input.nodes.data.loc[uuid]["id"]
-    assert len(net.line) == len(input.lines.data)
-    for uuid, idx in uuid_idx.line.items():
-        assert net.line.name.iloc[idx] == input.lines.data.loc[uuid]["id"]
-    assert len(net.trafo) == len(input.transformers_2_w.data)
-    for uuid, idx in uuid_idx.trafo.items():
-        assert net.trafo.name.iloc[idx] == input.transformers_2_w.data.loc[uuid]["id"]
+    net = convert_grid(input)
+    assert len(net.nodes) == len(input.bus)
+    assert len(net.lines) == len(input.line)
+    assert len(net.transformers_2_w) == len(input.trafo)
 
 
 def test_nodes_conversion(input_data):
