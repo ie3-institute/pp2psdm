@@ -24,7 +24,7 @@ class UuidIdxMaps:
 
 
 def convert_grid(
-    grid: pp.pandapowerNet, name: str = "", s_rated_mva: float = 1
+    grid: pp.pandapowerNet
 ) -> Tuple[RawGridContainer]:
 
     nodes, node_index_uuid_map = convert_nodes(grid)
