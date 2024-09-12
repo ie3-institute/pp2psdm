@@ -1,7 +1,6 @@
 import math
 
 import numpy as np
-import pandapower as pp
 import pytest
 
 from pp2psdm.grid import (  # , convert_transformers
@@ -9,6 +8,8 @@ from pp2psdm.grid import (  # , convert_transformers
     convert_line_types,
     convert_lines,
     convert_nodes,
+    convert_transformer_types,
+    convert_transformers,
 )
 from tests.utils import read_psdm_lv, read_sb_lv
 
@@ -59,7 +60,7 @@ def test_line_types_conversion(input_data):
     expected, input = input_data
     len = input.line.shape[0]
     nodes, node_index_uuid_map = convert_nodes(input)
-    net, _ = convert_line_types(input, nodes, index_uuid_map)
+    net, _ = convert_line_types(input, nodes, node_index_uuid_map)
 
     for i in range(len):
         assert (
@@ -110,39 +111,105 @@ def test_lines_conversion(input_data):
         assert net.data.iloc[i]["type"] == line_index_line_type_uuid_map.get(i)
 
 
+def trafo_parameter_test_conversion(
+    vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
+):
+    # Rated current on high voltage side in Ampere
+    i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
+
+    # Voltage at the main field admittance in V
+    vM = vn_hv_kv * 1e3 / math.sqrt(3)
+
+    # No load current in Ampere
+    iNoLoad = (i0_percent / 100) * i_rated
+
+    # No load admittance in Ohm
+    yNoLoad = iNoLoad / vM
+
+    # Reference current in Ampere
+    i_ref = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
+
+    # No load conductance in Siemens
+    gM = pfe_kw * 1e3 / ((vn_hv_kv * 1e3) ** 2)
+    # Convert into nano Siemens for psdm
+    gM_nS = gM * 1e9
+
+    # No load susceptance in Siemens
+    bM = math.sqrt(yNoLoad**2 - gM**2)
+    # Convert into nano Siemens for psdm and correct sign
+    bm_uS_directed = bM * 1e9 * (-1)
+
+    # Copper losses at short circuit in Watt
+    pCU = ((vkr_percent * 1e-3 / 100) * sn_mva * 1e6) * 1e3
+
+    # Resistance at short circuit in Ohm
+    rSc = pCU / (3 * i_ref**2)
+
+    # Reference Impedance in Ohm
+    z_ref = (vn_hv_kv * 1e3) ** 2 / (sn_mva * 1e6)
+
+    # Short circuit impedance in Ohm
+    zSc = (vk_percent / 100) * z_ref
+
+    # Short circuit reactance in Ohm
+    xSc = math.sqrt(zSc * zSc - rSc * rSc)
+    return (rSc, xSc, gM_nS, bm_uS_directed)
+
+
+def test_tranfo_type_conversion(input_data):
+    expected, input = input_data
+    len = input.trafo.shape[0]
+    net, _ = convert_transformer_types(input)
+
+    for i in range(len):
+        rSc, xSc, gM, bM = trafo_parameter_test_conversion(
+            input.trafo.iloc[i]["vk_percent"],
+            input.trafo.iloc[i]["vkr_percent"],
+            input.trafo.iloc[i]["pfe_kw"],
+            input.trafo.iloc[i]["i0_percent"],
+            input.trafo.iloc[i]["vn_hv_kv"],
+            input.trafo.iloc[i]["sn_mva"],
+        )
+
+        tap_side = True if input.trafo.iloc[i]["tap_side"] == "hv" else False
+
+        assert net.iloc[i]["tap_max"] == input.trafo.iloc[i]["tap_max"]
+        assert net.iloc[i]["tap_min"] == input.trafo.iloc[i]["tap_min"]
+        assert net.iloc[i]["tap_neutr"] == input.trafo.iloc[i]["tap_neutral"]
+        assert net.iloc[i]["tap_side"] == tap_side
+        assert net.iloc[i]["v_rated_a"] == input.trafo.iloc[i]["vn_hv_kv"]
+        assert net.iloc[i]["v_rated_b"] == input.trafo.iloc[i]["vn_lv_kv"]
+        assert net.iloc[i]["d_phi"] == input.trafo.iloc[i]["tap_step_degree"]
+        assert net.iloc[i]["d_v"] == input.trafo.iloc[i]["tap_step_percent"]
+        assert math.isclose(net.iloc[i]["r_sc"], rSc)
+        assert math.isclose(net.iloc[i]["x_sc"], xSc)
+        assert math.isclose(net.iloc[i]["g_m"], gM)
+        assert math.isclose(net.iloc[i]["b_m"], bM)
+        assert net.iloc[i]["s_rated"] == input.trafo.iloc[i]["sn_mva"] * 1000
+
+
 def test_trafo_conversion(input_data):
     expected, input = input_data
-    net = pp.create_empty_network()
-    input_trafo = input.transformers_2_w.data.iloc[0]
-    node_a = input.nodes.data.loc[input_trafo["node_a"]]
-    node_b = input.nodes.data.loc[input_trafo["node_b"]]
-    noda_a_idx = convert_node(net, node_a)
-    noda_b_idx = convert_node(net, node_b)
-    uuid_idx = {node_a.name: noda_a_idx, node_b.name: noda_b_idx}
-    idx = convert_transformer(net, input_trafo, uuid_idx)
+    len = input.trafo.shape[0]
+    _, node_index_uuid_map = convert_nodes(input)
+    trafo_types, trafo_index_trafo_type_uuid_map = convert_transformer_types(input)
 
-    assert idx == 0
-    assert net["trafo"]["name"].iloc[idx] == input_trafo["id"]
-    assert net["trafo"]["hv_bus"].iloc[idx] == noda_a_idx
-    assert net["trafo"]["lv_bus"].iloc[idx] == noda_b_idx
+    net = convert_transformers(
+        input, trafo_index_trafo_type_uuid_map, node_index_uuid_map
+    )
 
-    sb_trafos = expected.trafo[expected.trafo["name"] == input_trafo["id"]]
-    assert len(sb_trafos) == 1
-    sb_trafo = sb_trafos.iloc[0]
-    assert net["trafo"]["sn_mva"].iloc[idx] == sb_trafo["sn_mva"]
-    assert math.isclose(net["trafo"]["vn_hv_kv"].iloc[idx], sb_trafo["vn_hv_kv"])
-    assert math.isclose(net["trafo"]["vn_lv_kv"].iloc[idx], sb_trafo["vn_lv_kv"])
-    assert math.isclose(net["trafo"]["vk_percent"].iloc[idx], sb_trafo["vk_percent"])
-    assert math.isclose(net["trafo"]["vkr_percent"].iloc[idx], sb_trafo["vkr_percent"])
-    assert math.isclose(net["trafo"]["pfe_kw"].iloc[idx], sb_trafo["pfe_kw"])
-    assert math.isclose(net["trafo"]["i0_percent"].iloc[idx], sb_trafo["i0_percent"])
-    assert net["trafo"]["tap_side"].iloc[idx] == sb_trafo["tap_side"]
-    assert net["trafo"]["tap_neutral"].iloc[idx] == sb_trafo["tap_neutral"]
-    assert net["trafo"]["tap_min"].iloc[idx] == sb_trafo["tap_min"]
-    assert net["trafo"]["tap_max"].iloc[idx] == sb_trafo["tap_max"]
-    assert math.isclose(
-        net["trafo"]["tap_step_degree"].iloc[idx], sb_trafo["tap_step_degree"]
-    )
-    assert math.isclose(
-        net["trafo"]["tap_step_percent"].iloc[idx], sb_trafo["tap_step_percent"]
-    )
+    for i in range(len):
+        assert net.data.iloc[i]["id"] == input.trafo.iloc[i]["name"]
+        assert net.data.iloc[i]["auto_tap"] == input.trafo.iloc[i]["autoTap"]
+        assert net.data.iloc[i]["node_a"] == node_index_uuid_map.get(
+            input.trafo.iloc[i]["hv_bus"]
+        )
+        assert net.data.iloc[i]["node_b"] == node_index_uuid_map.get(
+            input.trafo.iloc[i]["lv_bus"]
+        )
+        assert net.data.iloc[i]["operates_from"] == None
+        assert net.data.iloc[i]["operates_until"] == None
+        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["parallel_devices"] == input.trafo.iloc[i]["parallel"]
+        assert net.data.iloc[i]["tap_pos"] == input.trafo.iloc[i]["tap_pos"]
+        assert net.data.iloc[i]["type"] == trafo_index_trafo_type_uuid_map.get(i)

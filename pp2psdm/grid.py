@@ -134,7 +134,7 @@ def convert_line_types(grid, nodes, node_index_uuid_map):
                 f"UUID not found for from_bus {row['from_bus']} or to_bus {row['to_bus']}"
             )
 
-        # Retrieve v_target for node_a and node_b (assuming these functions exist)
+        # Retrieve v_target for node_a and node_b
         v_target_a = get_v_target_for_node(nodes, node_a_uuid)
         v_target_b = get_v_target_for_node(nodes, node_b_uuid)
 
@@ -201,85 +201,137 @@ def convert_lines(grid, line_index_line_type_uuid_map, node_index_uuid_map):
     return create_lines(data_dict)
 
 
-def convert_transformer(net: pp.pandapowerNet, trafo_data: pd.Series, uuid_idx: dict):
-    trafo_id = trafo_data["id"]
-    hv_bus = uuid_idx[trafo_data["node_a"]]
-    lv_bus = uuid_idx[trafo_data["node_b"]]
-    sn_mva = trafo_data["s_rated"] / 1000
-    vn_hv_kv = trafo_data["v_rated_a"]
-    vn_lv_kv = trafo_data["v_rated_b"]
-    vk_percent, vkr_percent, pfe_kw, i0_percent = trafo_param_conversion(
-        float(trafo_data["r_sc"]),
-        float(trafo_data["x_sc"]),
-        float(trafo_data["s_rated"]),
-        float(trafo_data["v_rated_a"]),
-        float(trafo_data["g_m"]),
-        float(trafo_data["b_m"]),
-    )
-    if trafo_data["tap_side"]:
-        tap_side = "lv"
-    else:
-        tap_side = "hv"
+def convert_transformer_types(grid):
+    df = grid.trafo
+    trafo_types = {}
 
-    tap_neutral = int(trafo_data["tap_neutr"])
-    tap_min = int(trafo_data["tap_min"])
-    tap_max = int(trafo_data["tap_max"])
-    tap_step_degree = float(trafo_data["d_phi"])
-    tap_step_percent = float(trafo_data["d_v"])
+    for idx, row in df.iterrows():
+        trafo_index_trafo_type_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
-    return pp.create_transformer_from_parameters(
-        net,
-        hv_bus=hv_bus,
-        lv_bus=lv_bus,
-        name=trafo_id,
-        sn_mva=sn_mva,
-        vn_hv_kv=vn_hv_kv,
-        vn_lv_kv=vn_lv_kv,
-        vk_percent=vk_percent,
-        vkr_percent=vkr_percent,
-        pfe_kw=pfe_kw,
-        i0_percent=i0_percent,
-        tap_side=tap_side,
-        tap_neutral=tap_neutral,
-        tap_min=tap_min,
-        tap_max=tap_max,
-        tap_step_degree=tap_step_degree,
-        tap_step_percent=tap_step_percent,
-    )
+        # Convert trafo parameters
+        rSc, xSc, gM, bM = trafo_param_conversion(
+            row["vk_percent"],
+            row["vkr_percent"],
+            row["pfe_kw"],
+            row["i0_percent"],
+            row["vn_hv_kv"],
+            row["sn_mva"],
+        )
+
+        tap_side = True if row["tap_side"] == "hv" else False
+
+        uuid = trafo_index_trafo_type_uuid_map[idx]
+
+        trafo_types[uuid] = {
+            "uuid": uuid,
+            "b_m": bM,
+            "d_phi": row["tap_step_degree"],
+            "d_v": row["tap_step_percent"],
+            "g_m": gM,
+            "id": f"trafo2w_type_{idx + 1}",
+            "r_sc": rSc,
+            "s_rated": row["sn_mva"] * 1000,  # Convert to kVA
+            "tap_max": row["tap_max"],
+            "tap_min": row["tap_min"],
+            "tap_neutr": row["tap_neutral"],
+            "tap_side": tap_side,
+            "v_rated_a": row["vn_hv_kv"],
+            "v_rated_b": row["vn_lv_kv"],
+            "x_sc": xSc,
+        }
+
+    trafo_types = pd.DataFrame.from_dict(trafo_types, orient="index").reset_index()
+    trafo_types = trafo_types.set_index("uuid").drop(columns="index")
+    return trafo_types, trafo_index_trafo_type_uuid_map
+
+
+def convert_transformers(grid, trafo_index_trafo_type_uuid_map, node_index_uuid_map):
+    df = grid.trafo
+    transformers_data = []
+
+    # Create a mapping of line index to UUID
+    trafo_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
+
+    for idx, row in df.iterrows():
+        # Retrieve trafo type UUID
+        trafo_type_uuid = trafo_index_trafo_type_uuid_map.get(idx)
+
+        if not trafo_type_uuid:
+            raise ValueError(
+                f"No matching transformer type found for transformer {row['name']}"
+            )
+
+        # Retrieve node_a and node_b UUIDs based on hv_bus and lv_bus
+        node_a_uuid = node_index_uuid_map.get(row["hv_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["lv_bus"])
+
+        # Collect data for each transformer
+
+        autoTap = True if row["autoTap"] == 1 else False
+
+        trafo_data = {
+            "id": row["name"],
+            "uuid": trafo_index_uuid_map[idx],
+            "auto_tap": autoTap,
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
+            "operates_from": get_operation_times(row)[0],
+            "operates_until": get_operation_times(row)[1],
+            "operator": None,
+            "parallel_devices": row["parallel"],
+            "tap_pos": row["tap_pos"],
+            "type": trafo_type_uuid,
+        }
+        transformers_data.append(trafo_data)
+
+    data_dict = {
+        key: [d[key] for d in transformers_data] for key in transformers_data[0]
+    }
+
+    return create_2w_transformers(data_dict)
 
 
 def trafo_param_conversion(
-    r_sc: float, x_sc: float, s_rated: float, v_rated_a: float, g_m: float, b_m: float
+    vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
 ):
-
-    # Circuit impedance
-    z_sc = math.sqrt(r_sc**2 + x_sc**2)
-
     # Rated current on high voltage side in Ampere
-    i_rated = s_rated / (math.sqrt(3) * v_rated_a)
-
-    # Short-circuit voltage
-    v_imp = z_sc * i_rated * math.sqrt(3) / 1000
-
-    # Short-circuit voltage in percent
-    vk_percent = (v_imp / v_rated_a) * 100
-
-    # Real part of relative short-circuit voltage
-    vkr_percent = (r_sc / z_sc) * vk_percent
+    i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
 
     # Voltage at the main field admittance in V
-    v_m = v_rated_a / math.sqrt(3) * 1e3
-
-    # Recalculating Iron losses in kW
-    pfe_kw = (g_m * 3 * v_m**2) / 1e12  # converting to kW
-
-    # No load admittance
-    y_no_load = math.sqrt(g_m**2 + b_m**2) / 1e9  # in Siemens
+    vM = vn_hv_kv * 1e3 / math.sqrt(3)
 
     # No load current in Ampere
-    i_no_load = y_no_load * v_m
+    iNoLoad = (i0_percent / 100) * i_rated
 
-    # No load current in percent
-    i0_percent = (i_no_load / i_rated) * 100
+    # No load admittance in Ohm
+    yNoLoad = iNoLoad / vM
 
-    return vk_percent, vkr_percent, pfe_kw, i0_percent
+    # Reference current in Ampere
+    i_ref = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
+
+    # No load conductance in Siemens
+    gM = pfe_kw * 1e3 / ((vn_hv_kv * 1e3) ** 2)
+    # Convert into nano Siemens for psdm
+    gM_nS = gM * 1e9
+
+    # No load susceptance in Siemens
+    bM = math.sqrt(yNoLoad**2 - gM**2)
+    # Convert into nano Siemens for psdm and correct sign
+    bm_uS_directed = bM * 1e9 * (-1)
+
+    # Copper losses at short circuit in Watt
+    pCU = ((vkr_percent * 1e-3 / 100) * sn_mva * 1e6) * 1e3
+
+    # Resistance at short circuit in Ohm
+    rSc = pCU / (3 * i_ref**2)
+
+    # Reference Impedance in Ohm
+    z_ref = (vn_hv_kv * 1e3) ** 2 / (sn_mva * 1e6)
+
+    # Short circuit impedance in Ohm
+    zSc = (vk_percent / 100) * z_ref
+
+    # Short circuit reactance in Ohm
+    xSc = math.sqrt(zSc * zSc - rSc * rSc)
+
+    return (rSc, xSc, gM_nS, bm_uS_directed)
