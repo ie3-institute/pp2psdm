@@ -9,7 +9,6 @@ readme = "README.md"
 python = "<3.12,>3.11"
 pypsdm = {git = "https://github.com/ie3-institute/pypsdm.git"}
 pandapower = "^2.14.11"
-psycopg2-binary = ">=2.9.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
@@ -26,3 +25,4 @@ profile = "black"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
