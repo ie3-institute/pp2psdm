@@ -52,15 +52,15 @@ def test_nodes_conversion(input_data):
         assert net.data.iloc[i]["operator"] is None
         assert net.data.iloc[i]["geo_position"] == coord_string
 
+
 def test_lines_conversion(input_data):
     expected, input = input_data
     len = input.line.shape[0]
     nodes, node_index_uuid_map = convert_nodes(input)
-    
+
     net = convert_lines(input, nodes, node_index_uuid_map)
 
     for i in range(len):
-        
 
         node_from_bus = node_index_uuid_map.get(input.line.iloc[i]["from_bus"])
         assert net.data.iloc[i]["v_rated"] == nodes.get(node_from_bus)["v_target"]
@@ -69,10 +69,13 @@ def test_lines_conversion(input_data):
         assert math.isclose(net.data.iloc[i]["r"], input.line.iloc[i]["r_ohm_per_km"])
         assert math.isclose(net.data.iloc[i]["x"], input.line.iloc[i]["x_ohm_per_km"])
         assert math.isclose(
-            net.data.iloc[i]["b"], input.line.iloc[i]["c_nf_per_km"] * 2 * np.pi * 50 * 1e-3
+            net.data.iloc[i]["b"],
+            input.line.iloc[i]["c_nf_per_km"] * 2 * np.pi * 50 * 1e-3,
         )
         assert math.isclose(net.data.iloc[i]["g"], input.line.iloc[i]["g_us_per_km"])
-        assert math.isclose(net.data.iloc[i]["i_max"], input.line.iloc[i]["max_i_ka"] * 1000)
+        assert math.isclose(
+            net.data.iloc[i]["i_max"], input.line.iloc[i]["max_i_ka"] * 1000
+        )
         assert net.data.iloc[i]["id"] == input.line.iloc[i]["name"]
         assert net.data.iloc[i]["node_a"] == node_index_uuid_map.get(
             input.line.iloc[i]["from_bus"]
@@ -138,9 +141,7 @@ def test_trafo_conversion(input_data):
     len = input.trafo.shape[0]
     _, node_index_uuid_map = convert_nodes(input)
 
-    net = convert_transformers(
-        input, node_index_uuid_map
-    )
+    net = convert_transformers(input, node_index_uuid_map)
 
     for i in range(len):
         rSc, xSc, gM, bM = trafo_parameter_test_conversion(

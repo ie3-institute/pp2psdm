@@ -29,9 +29,7 @@ def convert_grid(grid: pp.pandapowerNet) -> Tuple[RawGridContainer]:
 
     lines = convert_lines(grid, nodes, node_index_uuid_map)
 
-    transformers = convert_transformers(
-        grid, node_index_uuid_map
-    )
+    transformers = convert_transformers(grid, node_index_uuid_map)
 
     # TODO convert switches
 
@@ -105,7 +103,6 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
     return g_us, b_us
 
 
-
 def convert_lines(grid, nodes, node_index_uuid_map):
     df = grid.line
     lines_data = []
@@ -115,7 +112,7 @@ def convert_lines(grid, nodes, node_index_uuid_map):
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
         node_a_uuid = node_index_uuid_map.get(row["from_bus"])
         node_b_uuid = node_index_uuid_map.get(row["to_bus"])
-        
+
         # Check if the UUIDs were found
         if node_a_uuid is None or node_b_uuid is None:
             raise KeyError(
