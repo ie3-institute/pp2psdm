@@ -47,9 +47,9 @@ def test_nodes_conversion(input_data):
         assert net.data.iloc[i]["id"] == input.bus.iloc[i]["name"]
         assert net.data.iloc[i]["v_rated"] == input.bus.iloc[i]["vn_kv"]
         assert net.data.iloc[i]["subnet"] == 101
-        assert net.data.iloc[i]["operates_from"] == None
-        assert net.data.iloc[i]["operates_until"] == None
-        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["operates_from"] is None
+        assert net.data.iloc[i]["operates_until"] is None
+        assert net.data.iloc[i]["operator"] is None
         assert (
             net.data.iloc[i]["geo_position"]
             == f'{{"type":"Point","coordinates":[{input.bus_geodata.iloc[i]["x"]},{input.bus_geodata.iloc[i]["y"]}],"crs":{{"type":"name","properties":{{"name":"EPSG:0"}}}}}}'
@@ -104,9 +104,9 @@ def test_lines_conversion(input_data):
         )
         assert net.data.iloc[i]["length"] == input.line.iloc[i]["length_km"]
         assert net.data.iloc[i]["olm_characteristic"] == "olm:{(0.0,1.0)}"
-        assert net.data.iloc[i]["operates_from"] == None
-        assert net.data.iloc[i]["operates_until"] == None
-        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["operates_from"] is None
+        assert net.data.iloc[i]["operates_until"] is None
+        assert net.data.iloc[i]["operator"] is None
         assert net.data.iloc[i]["parallel_devices"] == input.line.iloc[i]["parallel"]
         assert net.data.iloc[i]["type"] == line_index_line_type_uuid_map.get(i)
 
@@ -207,9 +207,9 @@ def test_trafo_conversion(input_data):
         assert net.data.iloc[i]["node_b"] == node_index_uuid_map.get(
             input.trafo.iloc[i]["lv_bus"]
         )
-        assert net.data.iloc[i]["operates_from"] == None
-        assert net.data.iloc[i]["operates_until"] == None
-        assert net.data.iloc[i]["operator"] == None
+        assert net.data.iloc[i]["operates_from"] is None
+        assert net.data.iloc[i]["operates_until"] is None
+        assert net.data.iloc[i]["operator"] is None
         assert net.data.iloc[i]["parallel_devices"] == input.trafo.iloc[i]["parallel"]
         assert net.data.iloc[i]["tap_pos"] == input.trafo.iloc[i]["tap_pos"]
         assert net.data.iloc[i]["type"] == trafo_index_trafo_type_uuid_map.get(i)

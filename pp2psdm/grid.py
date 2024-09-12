@@ -23,9 +23,7 @@ class UuidIdxMaps:
     trafo: dict[str, int] = field(default_factory=dict)
 
 
-def convert_grid(
-    grid: pp.pandapowerNet
-) -> Tuple[RawGridContainer]:
+def convert_grid(grid: pp.pandapowerNet) -> Tuple[RawGridContainer]:
 
     nodes, node_index_uuid_map = convert_nodes(grid)
 
