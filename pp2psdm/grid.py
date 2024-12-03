@@ -229,9 +229,6 @@ def trafo_param_conversion(
     # No load admittance in Ohm
     yNoLoad = iNoLoad / vM
 
-    # Reference current in Ampere
-    i_ref = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
-
     # No load conductance in Siemens
     gM = pfe_kw * 1e3 / ((vn_hv_kv * 1e3) ** 2)
     # Convert into nano Siemens for psdm
@@ -246,7 +243,7 @@ def trafo_param_conversion(
     pCU = ((vkr_percent * 1e-3 / 100) * sn_mva * 1e6) * 1e3
 
     # Resistance at short circuit in Ohm
-    rSc = pCU / (3 * i_ref**2)
+    rSc = pCU / (3 * i_rated**2)
 
     # Reference Impedance in Ohm
     z_ref = (vn_hv_kv * 1e3) ** 2 / (sn_mva * 1e6)
