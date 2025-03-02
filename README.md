@@ -13,10 +13,9 @@ This is a work-in-progress tool for converting [pandapower](https://github.com/e
 ## Usage
 
 ```py
-from pypsdm import RawGridContainer
 from pp2psdm.grid import convert_grid
+import pandapower as pp
 
-pp_path = "/my/psdm_grid/path"
-psdm_grid = RawGridContainer.from_csv(psdm_path)
-pp_grid, uuid_idx_maps = convert_grid(psdm_grid)
+pp_grid = pp.create_empty_network()     # loaded Pandapower net
+psdm_grid = convert_grid(pp_grid)
 ```
