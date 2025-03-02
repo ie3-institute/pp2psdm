@@ -49,8 +49,8 @@ def convert_nodes(grid):
             if zone is None:
                 geo_name = "EPSG:0"
             else:
-                geo_name = str(zone)
-            return f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],"crs":{{"type":"name","properties":{{"name":"' + geo_name + '"}}}'
+                geo_name = zone
+            return f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],"crs":{{"type":"name","properties":{{"name":"{geo_name}"}}}}}}'
         return None
 
     node_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
