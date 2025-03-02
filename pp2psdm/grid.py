@@ -50,7 +50,8 @@ def convert_nodes(grid):
                 geo_name = "EPSG:0"
             else:
                 geo_name = str(zone)
-            return f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],"crs":{{"type":"name","properties":{{"name":"' + geo_name + '"}}}'
+            return (f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],'
+                    f'"crs":{{"type":"name","properties":{{"name":"') + geo_name + '"}}}'
         return None
 
     node_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
@@ -144,7 +145,8 @@ def convert_lines(grid, nodes, node_index_uuid_map):
         # Ensure v_target_a and v_target_b are the same
         if v_target_a != v_target_b:
             raise ValueError(
-                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}"
+                f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b})"
+                f"for line {row['from_bus']} to {row['to_bus']}"
             )
 
         # Convert line parameters
@@ -275,4 +277,4 @@ def trafo_param_conversion(
     # Short circuit reactance in Ohm
     xSc = math.sqrt(zSc * zSc - rSc * rSc)
 
-    return (rSc, xSc, gM_nS, bm_uS_directed)
+    return rSc, xSc, gM_nS, bm_uS_directed
