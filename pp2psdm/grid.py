@@ -50,8 +50,14 @@ def convert_nodes(grid):
                 geo_name = "EPSG:0"
             else:
                 geo_name = str(zone)
-            return (f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],'
-                    f'"crs":{{"type":"name","properties":{{"name":"') + geo_name + '"}}}'
+            return (
+                (
+                    f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],'
+                    f'"crs":{{"type":"name","properties":{{"name":"'
+                )
+                + geo_name
+                + '"}}}'
+            )
         return None
 
     node_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
@@ -62,20 +68,16 @@ def convert_nodes(grid):
     if len(ext_grid_df) != 1:
         raise ValueError("PSDM grid supports just one slack node!")
     else:
-        slack_bus = ext_grid_df.loc[0, 'bus']
-        series_slack = pd.DataFrame(
-            {
-                'slack': 'False'
-            },
-            index=df.index
-        )
-        series_slack.loc[slack_bus, 'slack'] = 'True'
+        slack_bus = ext_grid_df.loc[0, "bus"]
+        series_slack = pd.DataFrame({"slack": "False"}, index=df.index)
+        series_slack.loc[slack_bus, "slack"] = "True"
 
     data_dict = {
         "id": df["name"].tolist(),
         "uuid": [node_index_uuid_map[idx] for idx in df.index],
         "geo_position": [
-            format_geo_position(geodata.iloc[idx], df['zone'].iloc[idx]) for idx in range(len(df))
+            format_geo_position(geodata.iloc[idx], df["zone"].iloc[idx])
+            for idx in range(len(df))
         ],
         "subnet": [get_default(row.get("zone"), 101) for _, row in df.iterrows()],
         "v_rated": df["vn_kv"].tolist(),
@@ -83,7 +85,7 @@ def convert_nodes(grid):
         "volt_lvl": [
             get_default(row.get("vlt_lvl"), row["vn_kv"]) for _, row in df.iterrows()
         ],
-        "slack": series_slack['slack'],
+        "slack": series_slack["slack"],
         "operates_from": [get_operation_times(row)[0] for _, row in df.iterrows()],
         "operates_until": [get_operation_times(row)[1] for _, row in df.iterrows()],
     }
@@ -238,7 +240,7 @@ def convert_transformers(grid, node_index_uuid_map):
 
 
 def trafo_param_conversion(
-        vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
+    vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
 ):
     # Rated current on high voltage side in Ampere
     i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
@@ -258,7 +260,7 @@ def trafo_param_conversion(
     gM_nS = gM * 1e9
 
     # No load susceptance in Siemens
-    bM = math.sqrt(yNoLoad ** 2 - gM ** 2)
+    bM = math.sqrt(yNoLoad**2 - gM**2)
     # Convert into nano Siemens for psdm and correct sign
     bm_uS_directed = bM * 1e9 * (-1)
 
@@ -266,7 +268,7 @@ def trafo_param_conversion(
     pCU = ((vkr_percent * 1e-3 / 100) * sn_mva * 1e6) * 1e3
 
     # Resistance at short circuit in Ohm
-    rSc = pCU / (3 * i_rated ** 2)
+    rSc = pCU / (3 * i_rated**2)
 
     # Reference Impedance in Ohm
     z_ref = (vn_hv_kv * 1e3) ** 2 / (sn_mva * 1e6)
