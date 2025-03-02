@@ -1,7 +1,6 @@
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Tuple
 from uuid import uuid4
 
 import numpy as np
