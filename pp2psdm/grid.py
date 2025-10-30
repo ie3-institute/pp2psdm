@@ -189,7 +189,7 @@ def convert_transformers(grid, node_index_uuid_map):
             row["sn_mva"],
         )
 
-        tap_side = True if row["tap_side"] == "hv" else False
+        tap_side = False if row["tap_side"] == "hv" else True
 
         # Retrieve node_a and node_b UUIDs based on hv_bus and lv_bus
         node_a_uuid = node_index_uuid_map.get(row["hv_bus"])

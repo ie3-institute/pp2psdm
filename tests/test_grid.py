@@ -143,7 +143,7 @@ def test_trafo_conversion(input_data):
             input.trafo.iloc[i]["sn_mva"],
         )
 
-        tap_side = True if input.trafo.iloc[i]["tap_side"] == "hv" else False
+        tap_side = False if input.trafo.iloc[i]["tap_side"] == "hv" else True
 
         assert net.data.iloc[i]["tap_max"] == input.trafo.iloc[i]["tap_max"]
         assert net.data.iloc[i]["tap_min"] == input.trafo.iloc[i]["tap_min"]
