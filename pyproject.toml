@@ -8,16 +8,16 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "<3.12,>3.11"
 pypsdm = {git = "https://github.com/ie3-institute/pypsdm.git"}
-pandapower = "^2.14.11"
+pandapower = "^3.2.1"
 psycopg2-binary = ">=2.9.9"
 
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
-flake8 = "^7.1.1"
-flake8-black = "^0.3.6"
-flake8-isort = "^6.0.0"
-pre-commit = "^3.8.0"
+pytest = "^8.4.2"
+flake8 = "^7.3.0"
+flake8-black = "^0.4.0"
+flake8-isort = "^7.0.0"
+pre-commit = "^4.3.0"
 PyYAML = "^6.0"
 jupyter = "^1.1.1"
 
