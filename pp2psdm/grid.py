@@ -1,13 +1,18 @@
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Tuple
 from uuid import uuid4
 
 import numpy as np
 import pandapower as pp
 import pandas as pd
+from pypsdm.models.input.connector import Switches
 from pypsdm.models.input.container.raw_grid import RawGridContainer
+from pypsdm.models.input.create.grid_elements import (
+    create_2w_transformers,
+    create_lines,
+    create_nodes,
+)
 
 
 @dataclass
@@ -17,40 +22,68 @@ class UuidIdxMaps:
     trafo: dict[str, int] = field(default_factory=dict)
 
 
-def convert_grid(
-    grid: pp.pandapowerNet, name: str = "", s_rated_mva: float = 1
-) -> Tuple[RawGridContainer, UuidIdxMaps]:
+def convert_grid(grid: pp.pandapowerNet) -> RawGridContainer:
+    nodes, node_index_uuid_map = convert_nodes(grid)
 
-    uuid_idx = UuidIdxMaps()
+    lines = convert_lines(grid, nodes, node_index_uuid_map)
 
-    net = RawGridContainer.empty()
+    transformers = convert_transformers(grid, node_index_uuid_map)
 
     # TODO convert switches
 
-    return net, uuid_idx
+    net = RawGridContainer(nodes, lines, transformers, Switches.create_empty)
+
+    return net
+
+
+def get_default(value, default):
+    return value if not pd.isna(value) else default
 
 
 def convert_nodes(grid):
     df = grid.bus
+    geodata = grid.bus_geodata
 
-    def get_default(value, default):
-        return value if not pd.isna(value) else default
+    def format_geo_position(row, zone):
+        if not pd.isna(row["x"]) and not pd.isna(row["y"]):
+            if zone is None:
+                geo_name = "EPSG:0"
+            else:
+                geo_name = zone
+            return f'{{"type":"Point","coordinates":[{row["x"]},{row["y"]}],"crs":{{"type":"name","properties":{{"name":"{geo_name}"}}}}}}'
+        return None
+
+    node_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
+
+    # get slack node
+    ext_grid_df = grid.ext_grid
+
+    if len(ext_grid_df) != 1:
+        raise ValueError("PSDM grid supports just one slack node!")
+    else:
+        slack_bus = ext_grid_df.loc[0, "bus"]
+        series_slack = pd.DataFrame({"slack": "False"}, index=df.index)
+        series_slack.loc[slack_bus, "slack"] = "True"
 
     data_dict = {
         "id": df["name"].tolist(),
-        "geo_position": [None] * len(df),
+        "uuid": [node_index_uuid_map[idx] for idx in df.index],
+        "geo_position": [
+            format_geo_position(geodata.iloc[idx], df["zone"].iloc[idx])
+            for idx in range(len(df))
+        ],
         "subnet": [get_default(row.get("zone"), 101) for _, row in df.iterrows()],
         "v_rated": df["vn_kv"].tolist(),
         "v_target": df["vn_kv"].tolist(),
         "volt_lvl": [
             get_default(row.get("vlt_lvl"), row["vn_kv"]) for _, row in df.iterrows()
         ],
-        "slack": ["false"] * len(df),
+        "slack": series_slack["slack"],
         "operates_from": [get_operation_times(row)[0] for _, row in df.iterrows()],
         "operates_until": [get_operation_times(row)[1] for _, row in df.iterrows()],
     }
 
-    return data_dict
+    return create_nodes(data_dict), node_index_uuid_map
 
 
 def get_operation_times(row):
@@ -65,9 +98,9 @@ def get_operation_times(row):
 
 
 def get_node_uuid(nodes, node_id):
-    for uuid, node_data in nodes.items():
+    for _, node_data in nodes.data.iterrows():
         if node_data["id"] == node_id:
-            return uuid
+            return node_data.name
     raise ValueError(f"No matching node found for id {node_id}")
 
 
@@ -83,26 +116,22 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
     return g_us, b_us
 
 
-def convert_line_types(df, nodes):
-    line_type_columns = [
-        "r_ohm_per_km",
-        "x_ohm_per_km",
-        "c_nf_per_km",
-        "g_us_per_km",
-        "max_i_ka",
-    ]
-    unique_line_types = df[line_type_columns].drop_duplicates().reset_index(drop=True)
+def convert_lines(grid, nodes, node_index_uuid_map):
+    df = grid.line
+    lines_data = []
+    line_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
-    line_types = {}
-
-    for idx, row in unique_line_types.iterrows():
-        uuid = str(uuid4())
-
-        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
+    for idx, row in df.iterrows():
 
         # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row["from_bus"])
-        node_b_uuid = get_node_uuid(nodes, row["to_bus"])
+        node_a_uuid = node_index_uuid_map.get(row["from_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["to_bus"])
+
+        # Check if the UUIDs were found
+        if node_a_uuid is None or node_b_uuid is None:
+            raise KeyError(
+                f"UUID not found for from_bus {row['from_bus']} or to_bus {row['to_bus']}"
+            )
 
         # Retrieve v_target for node_a and node_b
         v_target_a = get_v_target_for_node(nodes, node_a_uuid)
@@ -114,143 +143,132 @@ def convert_line_types(df, nodes):
                 f"v_target mismatch between node_a ({v_target_a}) and node_b ({v_target_b}) for line {row['from_bus']} to {row['to_bus']}"
             )
 
-        line_types[uuid] = {
-            "uuid": uuid,
+        # Convert line parameters
+        g_us, b_us = line_param_conversion(row["c_nf_per_km"], row["g_us_per_km"])
+
+        # Collect data for each line
+        line_data = {
+            "id": row["name"],
+            "uuid": line_index_uuid_map[idx],
+            "geo_position": None,
+            "length": row["length_km"],
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
             "r": row["r_ohm_per_km"],
             "x": row["x_ohm_per_km"],
             "b": b_us,
             "g": g_us,
-            "i_max": row["max_i_ka"] * 1000,
-            "id": f"line_type_{idx + 1}",
+            "i_max": row["max_i_ka"] * 1000,  # Convert to amperes
             "v_rated": v_target_a,
-        }
-
-    return line_types
-
-
-def convert_lines(df, line_types, nodes):
-    lines_data = []
-
-    for idx, row in df.iterrows():
-        # Find the corresponding line type based on r, x, c, g, max_i_ka
-        line_type_uuid = None
-
-        # If no matching line type is found, there might be an issue
-        if not line_type_uuid:
-            raise ValueError(f"No matching line type found for line {row['name']}")
-
-        # Retrieve node_a and node_b UUIDs based on from_bus and to_bus
-        node_a_uuid = get_node_uuid(nodes, row["from_bus"])
-        node_b_uuid = get_node_uuid(nodes, row["to_bus"])
-
-        # Set operates_from and operates_until based on in_service status
-        if row["in_service"]:
-            operates_from = None
-            operates_until = None
-        else:
-            operates_from = datetime(1980, 1, 1)
-            operates_until = datetime(1980, 12, 31)
-
-        # Create line data
-        line_data = {
-            "uuid": row["uuid"],
-            "geo_position": None,
-            "id": row["name"],
-            "length": row["length_km"],
-            "node_a": node_a_uuid,
-            "node_b": node_b_uuid,
             "olm_characteristic": "olm:{(0.0,1.0)}",
-            "operates_from": operates_from,
-            "operates_until": operates_until,
+            "operates_from": get_operation_times(row)[0],
+            "operates_until": get_operation_times(row)[1],
             "operator": None,
             "parallel_devices": row["parallel"],
-            "type": line_type_uuid,
         }
-
         lines_data.append(line_data)
 
-    return lines_data
+    data_dict = {key: [d[key] for d in lines_data] for key in lines_data[0]}
+
+    return create_lines(data_dict)
 
 
-def convert_transformer(net: pp.pandapowerNet, trafo_data: pd.Series, uuid_idx: dict):
-    trafo_id = trafo_data["id"]
-    hv_bus = uuid_idx[trafo_data["node_a"]]
-    lv_bus = uuid_idx[trafo_data["node_b"]]
-    sn_mva = trafo_data["s_rated"] / 1000
-    vn_hv_kv = trafo_data["v_rated_a"]
-    vn_lv_kv = trafo_data["v_rated_b"]
-    vk_percent, vkr_percent, pfe_kw, i0_percent = trafo_param_conversion(
-        float(trafo_data["r_sc"]),
-        float(trafo_data["x_sc"]),
-        float(trafo_data["s_rated"]),
-        float(trafo_data["v_rated_a"]),
-        float(trafo_data["g_m"]),
-        float(trafo_data["b_m"]),
-    )
-    if trafo_data["tap_side"]:
-        tap_side = "lv"
-    else:
-        tap_side = "hv"
+def convert_transformers(grid, node_index_uuid_map):
+    df = grid.trafo
+    transformers_data = []
+    trafo_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
-    tap_neutral = int(trafo_data["tap_neutr"])
-    tap_min = int(trafo_data["tap_min"])
-    tap_max = int(trafo_data["tap_max"])
-    tap_step_degree = float(trafo_data["d_phi"])
-    tap_step_percent = float(trafo_data["d_v"])
+    for idx, row in df.iterrows():
+        # Convert trafo parameters
+        rSc, xSc, gM, bM = trafo_param_conversion(
+            row["vk_percent"],
+            row["vkr_percent"],
+            row["pfe_kw"],
+            row["i0_percent"],
+            row["vn_hv_kv"],
+            row["sn_mva"],
+        )
 
-    return pp.create_transformer_from_parameters(
-        net,
-        hv_bus=hv_bus,
-        lv_bus=lv_bus,
-        name=trafo_id,
-        sn_mva=sn_mva,
-        vn_hv_kv=vn_hv_kv,
-        vn_lv_kv=vn_lv_kv,
-        vk_percent=vk_percent,
-        vkr_percent=vkr_percent,
-        pfe_kw=pfe_kw,
-        i0_percent=i0_percent,
-        tap_side=tap_side,
-        tap_neutral=tap_neutral,
-        tap_min=tap_min,
-        tap_max=tap_max,
-        tap_step_degree=tap_step_degree,
-        tap_step_percent=tap_step_percent,
-    )
+        tap_side = False if row["tap_side"] == "hv" else True
+
+        # Retrieve node_a and node_b UUIDs based on hv_bus and lv_bus
+        node_a_uuid = node_index_uuid_map.get(row["hv_bus"])
+        node_b_uuid = node_index_uuid_map.get(row["lv_bus"])
+
+        autoTap = True if row["autoTap"] == 1 else False
+
+        trafo_data = {
+            "id": row["name"],
+            "uuid": trafo_index_uuid_map[idx],
+            "auto_tap": autoTap,
+            "node_a": node_a_uuid,
+            "node_b": node_b_uuid,
+            "b_m": bM,
+            "d_phi": row["tap_step_degree"],
+            "d_v": row["tap_step_percent"],
+            "g_m": gM,
+            "r_sc": rSc,
+            "s_rated": row["sn_mva"] * 1000,  # Convert to kVA
+            "tap_max": row["tap_max"],
+            "tap_min": row["tap_min"],
+            "tap_neutr": row["tap_neutral"],
+            "tap_side": tap_side,
+            "v_rated_a": row["vn_hv_kv"],
+            "v_rated_b": row["vn_lv_kv"],
+            "x_sc": xSc,
+            "operates_from": get_operation_times(row)[0],
+            "operates_until": get_operation_times(row)[1],
+            "operator": None,
+            "parallel_devices": row["parallel"],
+            "tap_pos": row["tap_pos"],
+        }
+        transformers_data.append(trafo_data)
+
+    data_dict = {
+        key: [d[key] for d in transformers_data] for key in transformers_data[0]
+    }
+
+    return create_2w_transformers(data_dict)
 
 
 def trafo_param_conversion(
-    r_sc: float, x_sc: float, s_rated: float, v_rated_a: float, g_m: float, b_m: float
+    vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
 ):
-
-    # Circuit impedance
-    z_sc = math.sqrt(r_sc**2 + x_sc**2)
-
     # Rated current on high voltage side in Ampere
-    i_rated = s_rated / (math.sqrt(3) * v_rated_a)
-
-    # Short-circuit voltage
-    v_imp = z_sc * i_rated * math.sqrt(3) / 1000
-
-    # Short-circuit voltage in percent
-    vk_percent = (v_imp / v_rated_a) * 100
-
-    # Real part of relative short-circuit voltage
-    vkr_percent = (r_sc / z_sc) * vk_percent
+    i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
 
     # Voltage at the main field admittance in V
-    v_m = v_rated_a / math.sqrt(3) * 1e3
-
-    # Recalculating Iron losses in kW
-    pfe_kw = (g_m * 3 * v_m**2) / 1e12  # converting to kW
-
-    # No load admittance
-    y_no_load = math.sqrt(g_m**2 + b_m**2) / 1e9  # in Siemens
+    vM = vn_hv_kv * 1e3 / math.sqrt(3)
 
     # No load current in Ampere
-    i_no_load = y_no_load * v_m
+    iNoLoad = (i0_percent / 100) * i_rated
 
-    # No load current in percent
-    i0_percent = (i_no_load / i_rated) * 100
+    # No load admittance in Ohm
+    yNoLoad = iNoLoad / vM
 
-    return vk_percent, vkr_percent, pfe_kw, i0_percent
+    # No load conductance in Siemens
+    gM = pfe_kw * 1e3 / ((vn_hv_kv * 1e3) ** 2)
+    # Convert into nano Siemens for psdm
+    gM_nS = gM * 1e9
+
+    # No load susceptance in Siemens
+    bM = math.sqrt(yNoLoad**2 - gM**2)
+    # Convert into nano Siemens for psdm and correct sign
+    bm_uS_directed = bM * 1e9 * (-1)
+
+    # Copper losses at short circuit in Watt
+    pCU = ((vkr_percent * 1e-3 / 100) * sn_mva * 1e6) * 1e3
+
+    # Resistance at short circuit in Ohm
+    rSc = pCU / (3 * i_rated**2)
+
+    # Reference Impedance in Ohm
+    z_ref = (vn_hv_kv * 1e3) ** 2 / (sn_mva * 1e6)
+
+    # Short circuit impedance in Ohm
+    zSc = (vk_percent / 100) * z_ref
+
+    # Short circuit reactance in Ohm
+    xSc = math.sqrt(zSc * zSc - rSc * rSc)
+
+    return rSc, xSc, gM_nS, bm_uS_directed
