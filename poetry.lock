@@ -2329,14 +2329,14 @@ files = [
 
 [[package]]
 name = "pandapower"
-version = "3.3.1"
+version = "3.3.2"
 description = "An easy to use open source tool for power system modeling, analysis and optimization with a high degree of automation."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pandapower-3.3.1-py3-none-any.whl", hash = "sha256:8a1b477006cc3d0faf5bc52100308fa4cf6d5c425ac6c1eb60adc60637bd3ef3"},
-    {file = "pandapower-3.3.1.tar.gz", hash = "sha256:3e97c2e050aaba372998b7db0e9a793937ed90d327d6f949048c404c13c236eb"},
+    {file = "pandapower-3.3.2-py3-none-any.whl", hash = "sha256:eee09e3f5cac3c13bb10da656e5e096ee24a057feb8bee153ae2612dfdbc1999"},
+    {file = "pandapower-3.3.2.tar.gz", hash = "sha256:4392be6857d94f91f881e29dbfa2e22707c95cd5c5c550cc16583a6517d6d61a"},
 ]
 
 [package.dependencies]
@@ -2347,7 +2347,7 @@ numpy = ">=2.2,<3.0"
 packaging = ">=25.0,<26.0"
 pandas = ">=2.3,<3.0"
 pandera = ">=0.26.1,<0.27.0"
-scipy = ">=1.16.0,<1.17.0"
+scipy = "<1.17"
 tqdm = ">=4.67,<5.0"
 typing_extensions = ">=4.9,<5.0"
 
@@ -4283,4 +4283,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<3.12,>3.11"
-content-hash = "4ed63754fabb20656afc98319d6ab22937193913aa2d55bce5ca8f5f5b524234"
+content-hash = "0f5c93ed0267f3e51935f803dcb81ac63aa3e91699e2dbc6fd74ab3e239ba53c"
