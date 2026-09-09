@@ -3370,35 +3370,31 @@ diagrams = ["jinja2", "railroad-diagrams"]
 
 [[package]]
 name = "pypsdm"
-version = "0.0.7"
+version = "0.0.8"
 description = ""
 optional = false
-python-versions = ">3.11,<3.13"
-files = []
-develop = false
+python-versions = "<3.13,>3.11"
+files = [
+    {file = "pypsdm-0.0.8-py3-none-any.whl", hash = "sha256:5eba072de0d4c6a91b4b7fddc0183aba86cc3e1f7175cca186c2996223e2f85c"},
+    {file = "pypsdm-0.0.8.tar.gz", hash = "sha256:dff0cad764c88c041ce4272e889eaa17789c508e9ac4ea3490fb881ec3074d66"},
+]
 
 [package.dependencies]
-geoalchemy2 = "^0.20.0"
-loguru = "^0.7.2"
-matplotlib = "^3.11.1"
-networkx = "^3.6"
-numba = "^0.67.0"
+geoalchemy2 = ">=0.20.0,<0.21.0"
+loguru = ">=0.7.2,<0.8.0"
+matplotlib = ">=3.11.1,<4.0.0"
+networkx = ">=3.6,<4.0"
+numba = ">=0.67.0,<0.68.0"
 numpy = "1.26.4"
-pandas = "~=2.3.3"
-plotly = "^6.9.0"
-psycopg2-binary = "^2.9.12"
-pyhocon = "^0.3.63"
-python-dotenv = "^1.2.3"
-scipy = "^1.13.1"
+pandas = ">=2.3.3,<2.4.0"
+plotly = ">=6.9.0,<7.0.0"
+psycopg2-binary = ">=2.9.12,<3.0.0"
+pyhocon = ">=0.3.63,<0.4.0"
+python-dotenv = ">=1.2.3,<2.0.0"
+scipy = ">=1.13.1,<2.0.0"
 seaborn = "0.13.2"
-shapely = "^2.1.2"
-sqlmodel = "^0.0.42"
-
-[package.source]
-type = "git"
-url = "https://github.com/ie3-institute/pypsdm.git"
-reference = "a7da61ad4f6dbc59ef58492856f204500bd9ae71"
-resolved_reference = "a7da61ad4f6dbc59ef58492856f204500bd9ae71"
+shapely = ">=2.1.2,<3.0.0"
+sqlmodel = ">=0.0.42,<0.0.43"
 
 [[package]]
 name = "pytest"
@@ -4503,4 +4499,4 @@ dev = ["black (>=19.3b0)", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.0"
 python-versions = "<3.12,>3.11"
-content-hash = "c7b75cf3b08366b6d1176aa59009b7ce5b0ce6f25a7347df4ff70f844062d9e7"
+content-hash = "e3130eea397925956ae89c293b1512dae2a30022661fe520428b9b3bc1938e57"
