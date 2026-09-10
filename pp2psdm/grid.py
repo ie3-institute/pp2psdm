@@ -6,6 +6,10 @@ from uuid import uuid4
 import numpy as np
 import pandapower as pp
 import pandas as pd
+import warnings
+
+FREQUENCY = 50
+
 from pypsdm.models.input.connector import Switches
 from pypsdm.models.input.container.raw_grid import RawGridContainer
 from pypsdm.models.input.create.grid_elements import (
@@ -31,7 +35,7 @@ def convert_grid(grid: pp.pandapowerNet) -> RawGridContainer:
 
     # TODO convert switches
 
-    net = RawGridContainer(nodes, lines, transformers, Switches.create_empty)
+    net = RawGridContainer(nodes, lines, transformers, Switches.create_empty())
 
     return net
 
@@ -65,6 +69,16 @@ def convert_nodes(grid):
         series_slack = pd.DataFrame({"slack": "False"}, index=df.index)
         series_slack.loc[slack_bus, "slack"] = "True"
 
+    def compute_v_target(row):
+        vn = row.get("vn_kv")
+        if pd.isna(vn) or vn == 0:
+            raise ValueError(
+                f"Cannot convert v_target to per-unit for node {row.get('name')}: vn_kv is missing or zero"
+            )
+
+        v_target = row.get("v_target", vn)
+        return vn / vn if pd.isna(v_target) else v_target / vn
+
     data_dict = {
         "id": df["name"].tolist(),
         "uuid": [node_index_uuid_map[idx] for idx in df.index],
@@ -74,7 +88,7 @@ def convert_nodes(grid):
         ],
         "subnet": [get_default(row.get("zone"), 101) for _, row in df.iterrows()],
         "v_rated": df["vn_kv"].tolist(),
-        "v_target": df["vn_kv"].tolist(),
+        "v_target": [compute_v_target(row) for _, row in df.iterrows()],
         "volt_lvl": [
             get_default(row.get("vlt_lvl"), row["vn_kv"]) for _, row in df.iterrows()
         ],
@@ -109,8 +123,12 @@ def get_v_target_for_node(nodes, node_uuid):
 
 
 def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
+    """Convert line capacitance (nF/km) and conductance (µS/km) to per-km values used by PSDM.
+
+    Returns tuple (g_us, b_us).
+    """
     g_us = g_us_per_km
-    f = 50
+    f = FREQUENCY
     b_us = c_nf_per_km * (2 * np.pi * f * 1e-3)
 
     return g_us, b_us
@@ -118,6 +136,29 @@ def line_param_conversion(c_nf_per_km: float, g_us_per_km: float):
 
 def convert_lines(grid, nodes, node_index_uuid_map):
     df = grid.line
+    if df.empty:
+        # return an empty lines structure compatible with create_lines
+        data_dict = {
+            "id": [],
+            "uuid": [],
+            "geo_position": [],
+            "length": [],
+            "node_a": [],
+            "node_b": [],
+            "r": [],
+            "x": [],
+            "b": [],
+            "g": [],
+            "i_max": [],
+            "v_rated": [],
+            "olm_characteristic": [],
+            "operates_from": [],
+            "operates_until": [],
+            "operator": [],
+            "parallel_devices": [],
+        }
+        return create_lines(data_dict)
+
     lines_data = []
     line_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
@@ -175,6 +216,34 @@ def convert_lines(grid, nodes, node_index_uuid_map):
 
 def convert_transformers(grid, node_index_uuid_map):
     df = grid.trafo
+    if df.empty:
+        data_dict = {
+            "id": [],
+            "uuid": [],
+            "auto_tap": [],
+            "node_a": [],
+            "node_b": [],
+            "b_m": [],
+            "d_phi": [],
+            "d_v": [],
+            "g_m": [],
+            "r_sc": [],
+            "s_rated": [],
+            "tap_max": [],
+            "tap_min": [],
+            "tap_neutr": [],
+            "tap_side": [],
+            "v_rated_a": [],
+            "v_rated_b": [],
+            "x_sc": [],
+            "operates_from": [],
+            "operates_until": [],
+            "operator": [],
+            "parallel_devices": [],
+            "tap_pos": [],
+        }
+        return create_2w_transformers(data_dict)
+
     transformers_data = []
     trafo_index_uuid_map = {idx: str(uuid4()) for idx in df.index}
 
@@ -234,6 +303,14 @@ def convert_transformers(grid, node_index_uuid_map):
 def trafo_param_conversion(
     vk_percent, vkr_percent, pfe_kw, i0_percent, vn_hv_kv, sn_mva
 ):
+    """Convert transformer nameplate/psdm parameters into PSDM internal parameters.
+
+    Returns (rSc, xSc, gM_nS, bm_uS_directed)
+    """
+    # Validate inputs
+    if vn_hv_kv == 0 or sn_mva == 0:
+        raise ValueError("vn_hv_kv and sn_mva must be non-zero for transformer conversion")
+
     # Rated current on high voltage side in Ampere
     i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
 
@@ -243,7 +320,7 @@ def trafo_param_conversion(
     # No load current in Ampere
     iNoLoad = (i0_percent / 100) * i_rated
 
-    # No load admittance in Ohm
+    # No load admittance in Ohm (A/V -> S)
     yNoLoad = iNoLoad / vM
 
     # No load conductance in Siemens
@@ -252,7 +329,16 @@ def trafo_param_conversion(
     gM_nS = gM * 1e9
 
     # No load susceptance in Siemens
-    bM = math.sqrt(yNoLoad**2 - gM**2)
+    under_sqrt = yNoLoad**2 - gM**2
+    if under_sqrt < 0:
+        warnings.warn(
+            f"Computed no-load susceptance squared negative ({under_sqrt}); clamping to 0.",
+            UserWarning,
+        )
+        bM = 0.0
+    else:
+        bM = math.sqrt(under_sqrt)
+
     # Convert into nano Siemens for psdm and correct sign
     bm_uS_directed = bM * 1e9 * (-1)
 
@@ -269,6 +355,14 @@ def trafo_param_conversion(
     zSc = (vk_percent / 100) * z_ref
 
     # Short circuit reactance in Ohm
-    xSc = math.sqrt(zSc * zSc - rSc * rSc)
+    under_sqrt_z = zSc * zSc - rSc * rSc
+    if under_sqrt_z < 0:
+        warnings.warn(
+            f"Computed short-circuit reactance squared negative ({under_sqrt_z}); clamping to 0.",
+            UserWarning,
+        )
+        xSc = 0.0
+    else:
+        xSc = math.sqrt(under_sqrt_z)
 
     return rSc, xSc, gM_nS, bm_uS_directed
