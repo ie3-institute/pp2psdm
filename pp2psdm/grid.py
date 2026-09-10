@@ -1,4 +1,5 @@
 import math
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import uuid4
@@ -6,10 +7,6 @@ from uuid import uuid4
 import numpy as np
 import pandapower as pp
 import pandas as pd
-import warnings
-
-FREQUENCY = 50
-
 from pypsdm.models.input.connector import Switches
 from pypsdm.models.input.container.raw_grid import RawGridContainer
 from pypsdm.models.input.create.grid_elements import (
@@ -17,6 +14,8 @@ from pypsdm.models.input.create.grid_elements import (
     create_lines,
     create_nodes,
 )
+
+FREQUENCY = 50
 
 
 @dataclass
@@ -309,7 +308,9 @@ def trafo_param_conversion(
     """
     # Validate inputs
     if vn_hv_kv == 0 or sn_mva == 0:
-        raise ValueError("vn_hv_kv and sn_mva must be non-zero for transformer conversion")
+        raise ValueError(
+            "vn_hv_kv and sn_mva must be non-zero for transformer conversion"
+        )
 
     # Rated current on high voltage side in Ampere
     i_rated = sn_mva * 1e6 / (math.sqrt(3) * vn_hv_kv * 1e3)
