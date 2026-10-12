@@ -2482,14 +2482,14 @@ files = [
 
 [[package]]
 name = "pandapower"
-version = "3.5.5"
+version = "3.5.6"
 description = "An easy to use open source tool for power system modeling, analysis and optimization with a high degree of automation."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pandapower-3.5.5-py3-none-any.whl", hash = "sha256:119f1034e015fb59ef040542ca932592442afc6268e6788d7bf6cbc783bc39a5"},
-    {file = "pandapower-3.5.5.tar.gz", hash = "sha256:dc22b277afd90edd21a949da6d7f6565901fbef995bd5258ad55e7690554acf6"},
+    {file = "pandapower-3.5.6-py3-none-any.whl", hash = "sha256:b6d15d0d506136fd0b8d58a18c2e05ad4947fe1c8d5db2b74c9615cbb473c877"},
+    {file = "pandapower-3.5.6.tar.gz", hash = "sha256:41820e7f365ed76e71d82adb7063006a44c4b4d21c3012fc382e83e8f5e32cd8"},
 ]
 
 [package.dependencies]
